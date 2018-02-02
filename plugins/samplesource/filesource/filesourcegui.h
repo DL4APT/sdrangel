@@ -23,9 +23,10 @@
 
 #include "util/messagequeue.h"
 
+#include "filesourcesettings.h"
 #include "filesourceinput.h"
 
-class DeviceSourceAPI;
+class DeviceUISet;
 
 namespace Ui {
 	class FileSourceGui;
@@ -35,7 +36,7 @@ class FileSourceGui : public QWidget, public PluginInstanceGUI {
 	Q_OBJECT
 
 public:
-	explicit FileSourceGui(DeviceSourceAPI *deviceAPI, QWidget* parent = NULL);
+	explicit FileSourceGui(DeviceUISet *deviceUISet, QWidget* parent = 0);
 	virtual ~FileSourceGui();
 	virtual void destroy();
 
@@ -53,14 +54,16 @@ public:
 private:
 	Ui::FileSourceGui* ui;
 
-	DeviceSourceAPI* m_deviceAPI;
-	FileSourceInput::Settings m_settings;
+	DeviceUISet* m_deviceUISet;
+	FileSourceSettings m_settings;
+	bool m_doApplySettings;
 	QTimer m_statusTimer;
 	std::vector<int> m_gains;
 	DeviceSampleSource* m_sampleSource;
     bool m_acquisition;
     QString m_fileName;
 	int m_sampleRate;
+	quint32 m_sampleSize;
 	quint64 m_centerFrequency;
 	quint32 m_recordLength;
 	std::time_t m_startingTimeStamp;
@@ -72,6 +75,7 @@ private:
 	int m_lastEngineState;
 	MessageQueue m_inputMessageQueue;
 
+	void blockApplySettings(bool block) { m_doApplySettings = !block; }
 	void displaySettings();
 	void displayTime();
 	void sendSettings();

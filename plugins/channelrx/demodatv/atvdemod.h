@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "dsp/basebandsamplesink.h"
+#include "channel/channelsinkapi.h"
 #include "dsp/devicesamplesource.h"
 #include "dsp/dspcommands.h"
 #include "dsp/downchannelizer.h"
@@ -36,11 +37,13 @@
 #include "dsp/phasediscri.h"
 #include "audio/audiofifo.h"
 #include "util/message.h"
-#include "atvscreen.h"
+#include "atvscreeninterface.h"
 
 class DeviceSourceAPI;
+class ThreadedBasebandSampleSink;
+class DownChannelizer;
 
-class ATVDemod : public BasebandSampleSink
+class ATVDemod : public BasebandSampleSink, public ChannelSinkAPI
 {
 	Q_OBJECT
 
@@ -123,6 +126,26 @@ public:
         }
     };
 
+    class MsgConfigureChannelizer : public Message {
+        MESSAGE_CLASS_DECLARATION
+
+    public:
+        int getCenterFrequency() const { return m_centerFrequency; }
+
+        static MsgConfigureChannelizer* create(int centerFrequency)
+        {
+            return new MsgConfigureChannelizer(centerFrequency);
+        }
+
+    private:
+        int m_centerFrequency;
+
+        MsgConfigureChannelizer(int centerFrequency) :
+            Message(),
+            m_centerFrequency(centerFrequency)
+        { }
+    };
+
     class MsgReportEffectiveSampleRate : public Message
     {
         MESSAGE_CLASS_DECLARATION
@@ -147,8 +170,29 @@ public:
         { }
     };
 
+    class MsgReportChannelSampleRateChanged : public Message {
+        MESSAGE_CLASS_DECLARATION
+
+    public:
+        int getSampleRate() const { return m_sampleRate; }
+
+        static MsgReportChannelSampleRateChanged* create(int sampleRate)
+        {
+            return new MsgReportChannelSampleRateChanged(sampleRate);
+        }
+
+    private:
+        int m_sampleRate;
+
+        MsgReportChannelSampleRateChanged(int sampleRate) :
+            Message(),
+            m_sampleRate(sampleRate)
+        { }
+    };
+
     ATVDemod(DeviceSourceAPI *deviceAPI);
 	~ATVDemod();
+	virtual void destroy() { delete this; }
 	void setScopeSink(BasebandSampleSink* scopeSink) { m_scopeSink = scopeSink; }
 
     void configure(MessageQueue* objMessageQueue,
@@ -166,6 +210,7 @@ public:
 			int intVideoTabIndex);
 
     void configureRF(MessageQueue* objMessageQueue,
+            int64_t frequencyOffset,
             ATVModulation enmModulation,
             float fltRFBandwidth,
             float fltRFOppBandwidth,
@@ -179,11 +224,24 @@ public:
 	virtual void stop();
 	virtual bool handleMessage(const Message& cmd);
 
-    void setATVScreen(ATVScreen *objScreen);
+    virtual void getIdentifier(QString& id) { id = objectName(); }
+    virtual void getTitle(QString& title) { title = objectName(); }
+    virtual qint64 getCenterFrequency() const { return m_rfRunning.m_intFrequencyOffset; }
+
+    virtual QByteArray serialize() const { return QByteArray(); }
+    virtual bool deserialize(const QByteArray& data __attribute__((unused))) { return false; }
+
+    void setATVScreen(ATVScreenInterface *objScreen);
     int getSampleRate();
     int getEffectiveSampleRate();
     double getMagSq() const { return m_objMagSqAverage.average(); } //!< Beware this is scaled to 2^30
     bool getBFOLocked();
+
+    static const QString m_channelIdURI;
+    static const QString m_channelId;
+
+private slots:
+    void channelSampleRateChanged();
 
 private:
     struct ATVConfigPrivate
@@ -270,6 +328,7 @@ private:
 
         public:
             static MsgConfigureRFATVDemod* create(
+                    int64_t frequencyOffset,
                     ATVModulation enmModulation,
                     float fltRFBandwidth,
                     float fltRFOppBandwidth,
@@ -279,6 +338,7 @@ private:
                     float fmDeviation)
             {
                 return new MsgConfigureRFATVDemod(
+                        frequencyOffset,
                         enmModulation,
                         fltRFBandwidth,
                         fltRFOppBandwidth,
@@ -292,6 +352,7 @@ private:
 
         private:
             MsgConfigureRFATVDemod(
+                    int64_t frequencyOffset,
                     ATVModulation enmModulation,
                     float fltRFBandwidth,
                     float fltRFOppBandwidth,
@@ -301,6 +362,7 @@ private:
                     float fmDeviation) :
                 Message()
             {
+                m_objMsgConfig.m_intFrequencyOffset = frequencyOffset;
                 m_objMsgConfig.m_enmModulation = enmModulation;
                 m_objMsgConfig.m_fltRFBandwidth = fltRFBandwidth;
                 m_objMsgConfig.m_fltRFOppBandwidth = fltRFOppBandwidth;
@@ -342,6 +404,8 @@ private:
     };
 
     DeviceSourceAPI* m_deviceAPI;
+    ThreadedBasebandSampleSink* m_threadedChannelizer;
+    DownChannelizer* m_channelizer;
 
     //*************** SCOPE  ***************
 
@@ -349,7 +413,7 @@ private:
     SampleVector m_scopeSampleBuffer;
 
     //*************** ATV PARAMETERS  ***************
-    ATVScreen * m_registeredATVScreen;
+    ATVScreenInterface * m_registeredATVScreen;
 
     //int m_intNumberSamplePerLine;
     int m_intNumberSamplePerTop;

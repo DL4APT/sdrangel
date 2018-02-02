@@ -17,6 +17,8 @@
 #ifndef PLUGINS_CHANNELTX_MODSSB_SSBMODGUI_H_
 #define PLUGINS_CHANNELTX_MODSSB_SSBMODGUI_H_
 
+#include <QIcon>
+
 #include <plugin/plugininstancegui.h>
 #include "gui/rollupwidget.h"
 #include "dsp/channelmarker.h"
@@ -27,9 +29,8 @@
 #include "ssbmodsettings.h"
 
 class PluginAPI;
-class DeviceSinkAPI;
-
-class SSBMod;
+class DeviceUISet;
+class BasebandSampleSource;
 class SpectrumVis;
 
 namespace Ui {
@@ -40,7 +41,7 @@ class SSBModGUI : public RollupWidget, public PluginInstanceGUI {
     Q_OBJECT
 
 public:
-    static SSBModGUI* create(PluginAPI* pluginAPI, DeviceSinkAPI *deviceAPI);
+    static SSBModGUI* create(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSource *channelTx);
     virtual void destroy();
 
     void setName(const QString& name);
@@ -54,12 +55,53 @@ public:
     virtual MessageQueue *getInputMessageQueue() { return &m_inputMessageQueue; }
     virtual bool handleMessage(const Message& message);
 
-    static const QString m_channelID;
+public slots:
+    void channelMarkerChangedByCursor();
+
+private:
+    Ui::SSBModGUI* ui;
+    PluginAPI* m_pluginAPI;
+    DeviceUISet* m_deviceUISet;
+    ChannelMarker m_channelMarker;
+    SSBModSettings m_settings;
+    bool m_doApplySettings;
+	int m_spectrumRate;
+
+    SpectrumVis* m_spectrumVis;
+    SSBMod* m_ssbMod;
+    MovingAverage<double> m_channelPowerDbAvg;
+
+    QString m_fileName;
+    quint32 m_recordLength;
+    int m_recordSampleRate;
+    int m_samplesCount;
+    std::size_t m_tickCount;
+    bool m_enableNavTime;
+    SSBMod::SSBModInputAF m_modAFInput;
+    MessageQueue m_inputMessageQueue;
+
+    QIcon m_iconDSBUSB;
+    QIcon m_iconDSBLSB;
+
+    explicit SSBModGUI(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSource *channelTx, QWidget* parent = 0);
+    virtual ~SSBModGUI();
+
+    bool blockApplySettings(bool block);
+    void applySettings(bool force = false);
+    void applyBandwidths(bool force = false);
+    void displaySettings();
+    void displayAGCPowerThreshold();
+    void updateWithStreamData();
+    void updateWithStreamTime();
+    void channelMarkerUpdate();
+
+    void leaveEvent(QEvent*);
+    void enterEvent(QEvent*);
 
 private slots:
     void handleSourceMessages();
-    void channelMarkerChanged();
     void on_deltaFrequency_changed(qint64 value);
+    void on_flipSidebands_clicked(bool checked);
     void on_dsb_toggled(bool checked);
     void on_audioBinaural_toggled(bool checked);
     void on_audioFlipChannels_toggled(bool checked);
@@ -85,50 +127,9 @@ private slots:
     void on_showFileDialog_clicked(bool checked);
 
     void onWidgetRolled(QWidget* widget, bool rollDown);
-    void onMenuDoubleClicked();
 
     void configureFileName();
     void tick();
-
-private:
-    Ui::SSBModGUI* ui;
-    PluginAPI* m_pluginAPI;
-    DeviceSinkAPI* m_deviceAPI;
-    ChannelMarker m_channelMarker;
-    SSBModSettings m_settings;
-    bool m_basicSettingsShown;
-    bool m_doApplySettings;
-	int m_rate;
-
-    SpectrumVis* m_spectrumVis;
-    SSBMod* m_ssbMod;
-    MovingAverage<double> m_channelPowerDbAvg;
-
-    QString m_fileName;
-    quint32 m_recordLength;
-    int m_recordSampleRate;
-    int m_samplesCount;
-    std::size_t m_tickCount;
-    bool m_enableNavTime;
-    SSBMod::SSBModInputAF m_modAFInput;
-    MessageQueue m_inputMessageQueue;
-
-    explicit SSBModGUI(PluginAPI* pluginAPI, DeviceSinkAPI *deviceAPI, QWidget* parent = NULL);
-    virtual ~SSBModGUI();
-
-    int  getEffectiveLowCutoff(int lowCutoff);
-    bool setNewRate(int spanLog2);
-
-    void blockApplySettings(bool block);
-    void applySettings(bool force = false);
-    void displaySettings();
-    void displayAGCPowerThreshold();
-    void updateWithStreamData();
-    void updateWithStreamTime();
-    void channelMarkerUpdate();
-
-    void leaveEvent(QEvent*);
-    void enterEvent(QEvent*);
 };
 
 #endif /* PLUGINS_CHANNELTX_MODSSB_SSBMODGUI_H_ */

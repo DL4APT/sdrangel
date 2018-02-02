@@ -23,6 +23,7 @@
 #include <fstream>
 
 #include "dsp/basebandsamplesource.h"
+#include "channel/channelsourceapi.h"
 #include "dsp/nco.h"
 #include "dsp/ncof.h"
 #include "dsp/interpolator.h"
@@ -40,7 +41,7 @@ class DeviceSinkAPI;
 class ThreadedBasebandSampleSource;
 class UpChannelizer;
 
-class NFMMod : public BasebandSampleSource {
+class NFMMod : public BasebandSampleSource, public ChannelSourceAPI {
     Q_OBJECT
 
 public:
@@ -158,27 +159,6 @@ public:
         { }
     };
 
-    class MsgConfigureAFInput : public Message
-    {
-        MESSAGE_CLASS_DECLARATION
-
-    public:
-        NFMModInputAF getAFInput() const { return m_afInput; }
-
-        static MsgConfigureAFInput* create(NFMModInputAF afInput)
-        {
-            return new MsgConfigureAFInput(afInput);
-        }
-
-    private:
-        NFMModInputAF m_afInput;
-
-        MsgConfigureAFInput(NFMModInputAF afInput) :
-            Message(),
-            m_afInput(afInput)
-        { }
-    };
-
     class MsgReportFileSourceStreamTiming : public Message
     {
         MESSAGE_CLASS_DECLARATION
@@ -229,6 +209,7 @@ public:
 
     NFMMod(DeviceSinkAPI *deviceAPI);
     ~NFMMod();
+    virtual void destroy() { delete this; }
 
     virtual void pull(Sample& sample);
     virtual void pullAudio(int nbSamples);
@@ -236,9 +217,31 @@ public:
     virtual void stop();
     virtual bool handleMessage(const Message& cmd);
 
+    virtual void getIdentifier(QString& id) { id = objectName(); }
+    virtual void getTitle(QString& title) { title = m_settings.m_title; }
+    virtual void setName(const QString& name) { setObjectName(name); }
+    virtual QString getName() const { return objectName(); }
+    virtual qint64 getCenterFrequency() const { return m_settings.m_inputFrequencyOffset; }
+
+    virtual QByteArray serialize() const;
+    virtual bool deserialize(const QByteArray& data);
+
+    virtual int webapiSettingsGet(
+                SWGSDRangel::SWGChannelSettings& response,
+                QString& errorMessage);
+
+    virtual int webapiSettingsPutPatch(
+                bool force,
+                const QStringList& channelSettingsKeys,
+                SWGSDRangel::SWGChannelSettings& response,
+                QString& errorMessage);
+
     double getMagSq() const { return m_magsq; }
 
     CWKeyer *getCWKeyer() { return &m_cwKeyer; }
+
+    static const QString m_channelIdURI;
+    static const QString m_channelId;
 
 signals:
     /**
@@ -259,6 +262,10 @@ private:
     DeviceSinkAPI* m_deviceAPI;
     ThreadedBasebandSampleSource* m_threadedChannelizer;
     UpChannelizer* m_channelizer;
+
+    int m_basebandSampleRate;
+    int m_outputSampleRate;
+    int m_inputFrequencyOffset;
     NFMModSettings m_settings;
 
     NCO m_carrierNco;
@@ -297,7 +304,7 @@ private:
     CWKeyer m_cwKeyer;
     static const int m_levelNbSamples;
 
-    //void apply();
+    void applyChannelSettings(int basebandSampleRate, int outputSampleRate, int inputFrequencyOffset, bool force = false);
     void applySettings(const NFMModSettings& settings, bool force = false);
     void pullAF(Real& sample);
     void calculateLevel(Real& sample);

@@ -15,7 +15,8 @@
 // along with this program. If not, see <http://www.gnu.org/licenses/>.          //
 ///////////////////////////////////////////////////////////////////////////////////
 
-#include "../../channelrx/demodbfm/rdsparser.h"
+#include "rdsparser.h"
+#include "rdstmc.h"
 
 #include <QDebug>
 #include <string.h>
@@ -25,7 +26,6 @@
 #include <cstring>
 #include "boost/format.hpp"
 
-#include "../../channelrx/demodbfm/rdstmc.h"
 
 const unsigned int RDSParser::offset_pos[5] = {0,1,2,3,2};
 const unsigned int RDSParser::offset_word[5] = {252,408,360,436,848};
@@ -743,7 +743,7 @@ void RDSParser::decode_type3(unsigned int *group, bool B)
 	qDebug() << "RDSParser::decode_type3: aid group: " << application_group
 		<< " " << (group_type ? 'B' : 'A');*/
 
-	if ((application_group == 8) && (group_type == false))
+	if ((application_group == 8) && (group_type == 0))
 	{ // 8A
 		int variant_code = (message >> 14) & 0x3;
 
@@ -933,10 +933,10 @@ void RDSParser::decode_optional_content(int no_groups, unsigned long int *free_f
 		while(ff_pointer > 0)
 		{
 			ff_pointer -= 4;
-			m_g8_label_index = (free_format[i] && (0xf << ff_pointer));
+			m_g8_label_index = (free_format[i] & (0xf << ff_pointer));
 			content_length = optional_content_lengths[m_g8_label_index];
 			ff_pointer -= content_length;
-			m_g8_content = (free_format[i] && (int(std::pow(2, content_length) - 1) << ff_pointer));
+			m_g8_content = (free_format[i] & (int(std::pow(2, content_length) - 1) << ff_pointer));
 
 			/*
 			qDebug() << "RDSParser::decode_optional_content: TMC optional content (" << label_descriptions[m_g8_label_index].c_str()

@@ -1,17 +1,20 @@
 #include <QtPlugin>
-#include <QAction>
 #include <rtl-sdr.h>
+
 #include "plugin/pluginapi.h"
 #include "util/simpleserializer.h"
-#include "rtlsdrplugin.h"
-
 #include <device/devicesourceapi.h>
 
+#ifdef SERVER_MODE
+#include "rtlsdrinput.h"
+#else
 #include "rtlsdrgui.h"
+#endif
+#include "rtlsdrplugin.h"
 
 const PluginDescriptor RTLSDRPlugin::m_pluginDescriptor = {
 	QString("RTL-SDR Input"),
-	QString("3.7.4"),
+	QString("3.11.0"),
 	QString("(c) Edouard Griffiths, F4EXB"),
 	QString("https://github.com/f4exb/sdrangel"),
 	true,
@@ -57,21 +60,38 @@ PluginInterface::SamplingDevices RTLSDRPlugin::enumSampleSources()
 		        m_hardwareID,
 				m_deviceTypeID,
 				QString(serial),
-				i));
+				i,
+				PluginInterface::SamplingDevice::PhysicalDevice,
+				true,
+				1,
+				0));
 	}
 	return result;
 }
 
-PluginInstanceGUI* RTLSDRPlugin::createSampleSourcePluginInstanceGUI(const QString& sourceId, QWidget **widget, DeviceSourceAPI *deviceAPI)
+#ifdef SERVER_MODE
+PluginInstanceGUI* RTLSDRPlugin::createSampleSourcePluginInstanceGUI(
+        const QString& sourceId __attribute((unused)),
+        QWidget **widget __attribute((unused)),
+        DeviceUISet *deviceUISet __attribute((unused)))
+{
+    return 0;
+}
+#else
+PluginInstanceGUI* RTLSDRPlugin::createSampleSourcePluginInstanceGUI(
+        const QString& sourceId,
+        QWidget **widget,
+        DeviceUISet *deviceUISet)
 {
 	if(sourceId == m_deviceTypeID) {
-		RTLSDRGui* gui = new RTLSDRGui(deviceAPI);
+		RTLSDRGui* gui = new RTLSDRGui(deviceUISet);
 		*widget = gui;
 		return gui;
 	} else {
 		return 0;
 	}
 }
+#endif
 
 DeviceSampleSource *RTLSDRPlugin::createSampleSourcePluginInstanceInput(const QString& sourceId, DeviceSourceAPI *deviceAPI)
 {

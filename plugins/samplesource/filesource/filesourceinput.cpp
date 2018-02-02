@@ -18,13 +18,16 @@
 #include <errno.h>
 #include <QDebug>
 
+#include "SWGDeviceSettings.h"
+#include "SWGFileSourceSettings.h"
+#include "SWGDeviceState.h"
+
 #include "util/simpleserializer.h"
 #include "dsp/dspcommands.h"
 #include "dsp/dspengine.h"
 #include "dsp/filerecord.h"
 #include "device/devicesourceapi.h"
 
-#include "filesourcegui.h"
 #include "filesourceinput.h"
 #include "filesourcethread.h"
 
@@ -33,44 +36,10 @@ MESSAGE_CLASS_DEFINITION(FileSourceInput::MsgConfigureFileSourceName, Message)
 MESSAGE_CLASS_DEFINITION(FileSourceInput::MsgConfigureFileSourceWork, Message)
 MESSAGE_CLASS_DEFINITION(FileSourceInput::MsgConfigureFileSourceSeek, Message)
 MESSAGE_CLASS_DEFINITION(FileSourceInput::MsgConfigureFileSourceStreamTiming, Message)
+MESSAGE_CLASS_DEFINITION(FileSourceInput::MsgStartStop, Message)
 MESSAGE_CLASS_DEFINITION(FileSourceInput::MsgReportFileSourceAcquisition, Message)
 MESSAGE_CLASS_DEFINITION(FileSourceInput::MsgReportFileSourceStreamData, Message)
 MESSAGE_CLASS_DEFINITION(FileSourceInput::MsgReportFileSourceStreamTiming, Message)
-
-FileSourceInput::Settings::Settings() :
-	m_fileName("./test.sdriq")
-{
-}
-
-void FileSourceInput::Settings::resetToDefaults()
-{
-	m_fileName = "./test.sdriq";
-}
-
-QByteArray FileSourceInput::Settings::serialize() const
-{
-	SimpleSerializer s(1);
-	s.writeString(1, m_fileName);
-	return s.final();
-}
-
-bool FileSourceInput::Settings::deserialize(const QByteArray& data)
-{
-	SimpleDeserializer d(data);
-
-	if(!d.isValid()) {
-		resetToDefaults();
-		return false;
-	}
-
-	if(d.getVersion() == 1) {
-		d.readString(1, &m_fileName, "./test.sdriq");
-		return true;
-	} else {
-		resetToDefaults();
-		return false;
-	}
-}
 
 FileSourceInput::FileSourceInput(DeviceSourceAPI *deviceAPI) :
     m_deviceAPI(deviceAPI),
@@ -79,11 +48,15 @@ FileSourceInput::FileSourceInput(DeviceSourceAPI *deviceAPI) :
 	m_deviceDescription(),
 	m_fileName("..."),
 	m_sampleRate(0),
+	m_sampleSize(0),
 	m_centerFrequency(0),
 	m_recordLength(0),
     m_startingTimeStamp(0),
     m_masterTimer(deviceAPI->getMasterTimer())
 {
+    qDebug("FileSourceInput::FileSourceInput: device source engine: %p", m_deviceAPI->getDeviceSourceEngine());
+    qDebug("FileSourceInput::FileSourceInput: device source engine message queue: %p", m_deviceAPI->getDeviceEngineInputMessageQueue());
+    qDebug("FileSourceInput::FileSourceInput: device source: %p", m_deviceAPI->getDeviceSourceEngine()->getSource());
 }
 
 FileSourceInput::~FileSourceInput()
@@ -113,6 +86,7 @@ void FileSourceInput::openFileStream()
 	m_sampleRate = header.sampleRate;
 	m_centerFrequency = header.centerFrequency;
 	m_startingTimeStamp = header.startTimeStamp;
+	m_sampleSize = header.sampleSize;
 
 	if (fileSize > sizeof(FileRecord::Header)) {
 		m_recordLength = (fileSize - sizeof(FileRecord::Header)) / (4 * m_sampleRate);
@@ -125,6 +99,7 @@ void FileSourceInput::openFileStream()
 			<< " length: " << m_recordLength << " seconds";
 
 	MsgReportFileSourceStreamData *report = MsgReportFileSourceStreamData::create(m_sampleRate,
+	        m_sampleSize,
 			m_centerFrequency,
 			m_startingTimeStamp,
 			m_recordLength); // file stream data
@@ -148,6 +123,12 @@ void FileSourceInput::seekFileStream(int seekPercentage)
 	}
 }
 
+void FileSourceInput::init()
+{
+    DSPSignalNotification *notif = new DSPSignalNotification(m_settings.m_sampleRate, m_settings.m_centerFrequency);
+    m_deviceAPI->getDeviceEngineInputMessageQueue()->push(notif);
+}
+
 bool FileSourceInput::start()
 {
 	QMutexLocker mutexLocker(&m_mutex);
@@ -158,7 +139,7 @@ bool FileSourceInput::start()
 		m_ifstream.seekg(sizeof(FileRecord::Header), std::ios::beg);
 	}
 
-	if(!m_sampleFifo.setSize(m_sampleRate * 4)) {
+	if(!m_sampleFifo.setSize(m_sampleRate * sizeof(Sample))) {
 		qCritical("Could not allocate SampleFifo");
 		return false;
 	}
@@ -171,7 +152,7 @@ bool FileSourceInput::start()
 		return false;
 	}
 
-	m_fileSourceThread->setSamplerate(m_sampleRate);
+	m_fileSourceThread->setSampleRateAndSize(m_sampleRate, m_sampleSize);
 	m_fileSourceThread->connectTimer(m_masterTimer);
 	m_fileSourceThread->startWork();
 	m_deviceDescription = "FileSource";
@@ -210,6 +191,33 @@ void FileSourceInput::stop()
 	}
 }
 
+QByteArray FileSourceInput::serialize() const
+{
+    return m_settings.serialize();
+}
+
+bool FileSourceInput::deserialize(const QByteArray& data)
+{
+    bool success = true;
+
+    if (!m_settings.deserialize(data))
+    {
+        m_settings.resetToDefaults();
+        success = false;
+    }
+
+    MsgConfigureFileSource* message = MsgConfigureFileSource::create(m_settings);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue)
+    {
+        MsgConfigureFileSource* messageToGUI = MsgConfigureFileSource::create(m_settings);
+        m_guiMessageQueue->push(messageToGUI);
+    }
+
+    return success;
+}
+
 const QString& FileSourceInput::getDeviceDescription() const
 {
 	return m_deviceDescription;
@@ -223,6 +231,21 @@ int FileSourceInput::getSampleRate() const
 quint64 FileSourceInput::getCenterFrequency() const
 {
 	return m_centerFrequency;
+}
+
+void FileSourceInput::setCenterFrequency(qint64 centerFrequency)
+{
+    FileSourceSettings settings = m_settings;
+    settings.m_centerFrequency = centerFrequency;
+
+    MsgConfigureFileSource* message = MsgConfigureFileSource::create(m_settings);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue)
+    {
+        MsgConfigureFileSource* messageToGUI = MsgConfigureFileSource::create(m_settings);
+        m_guiMessageQueue->push(messageToGUI);
+    }
 }
 
 std::time_t FileSourceInput::getStartingTimeStamp() const
@@ -285,8 +308,65 @@ bool FileSourceInput::handleMessage(const Message& message)
 
 		return true;
 	}
+    else if (MsgStartStop::match(message))
+    {
+        MsgStartStop& cmd = (MsgStartStop&) message;
+        qDebug() << "FileSourceInput::handleMessage: MsgStartStop: " << (cmd.getStartStop() ? "start" : "stop");
+
+        if (cmd.getStartStop())
+        {
+            if (m_deviceAPI->initAcquisition())
+            {
+                m_deviceAPI->startAcquisition();
+                DSPEngine::instance()->startAudioOutput();
+            }
+        }
+        else
+        {
+            m_deviceAPI->stopAcquisition();
+            DSPEngine::instance()->stopAudioOutput();
+        }
+
+        return true;
+    }
 	else
 	{
 		return false;
 	}
 }
+
+int FileSourceInput::webapiSettingsGet(
+                SWGSDRangel::SWGDeviceSettings& response,
+                QString& errorMessage __attribute__((unused)))
+{
+    response.setFileSourceSettings(new SWGSDRangel::SWGFileSourceSettings());
+    *response.getFileSourceSettings()->getFileName() = m_settings.m_fileName;
+    return 200;
+}
+
+int FileSourceInput::webapiRunGet(
+        SWGSDRangel::SWGDeviceState& response,
+        QString& errorMessage __attribute__((unused)))
+{
+    m_deviceAPI->getDeviceEngineStateStr(*response.getState());
+    return 200;
+}
+
+int FileSourceInput::webapiRun(
+        bool run,
+        SWGSDRangel::SWGDeviceState& response,
+        QString& errorMessage __attribute__((unused)))
+{
+    m_deviceAPI->getDeviceEngineStateStr(*response.getState());
+    MsgStartStop *message = MsgStartStop::create(run);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue) // forward to GUI if any
+    {
+        MsgStartStop *msgToGUI = MsgStartStop::create(run);
+        m_guiMessageQueue->push(msgToGUI);
+    }
+
+    return 200;
+}
+

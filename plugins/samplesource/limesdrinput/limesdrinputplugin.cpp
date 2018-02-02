@@ -14,10 +14,7 @@
 // along with this program. If not, see <http://www.gnu.org/licenses/>.          //
 ///////////////////////////////////////////////////////////////////////////////////
 
-#include "limesdrinputplugin.h"
-
 #include <QtPlugin>
-#include <QAction>
 
 #include <regex>
 #include <string>
@@ -27,11 +24,16 @@
 #include "util/simpleserializer.h"
 #include "device/devicesourceapi.h"
 
+#ifdef SERVER_MODE
+#include "limesdrinput.h"
+#else
 #include "limesdrinputgui.h"
+#endif
+#include "limesdrinputplugin.h"
 
 const PluginDescriptor LimeSDRInputPlugin::m_pluginDescriptor = {
     QString("LimeSDR Input"),
-    QString("3.7.8"),
+    QString("3.10.1"),
     QString("(c) Edouard Griffiths, F4EXB"),
     QString("https://github.com/f4exb/sdrangel"),
     true,
@@ -83,13 +85,24 @@ PluginInterface::SamplingDevices LimeSDRInputPlugin::enumSampleSources()
             std::string serial("N/D");
             findSerial((const char *) deviceList[i], serial);
 
-            qDebug("LimeSDRInputPlugin::enumSampleSources: device #%d: %s", i, (char *) deviceList[i]);
-            QString displayedName(QString("LimeSDR[%1] %2").arg(i).arg(serial.c_str()));
-            result.append(SamplingDevice(displayedName,
-                    m_hardwareID,
-                    m_deviceTypeID,
-                    QString(deviceList[i]),
-                    i));
+            DeviceLimeSDRParams limeSDRParams;
+            limeSDRParams.open(deviceList[i]);
+            limeSDRParams.close();
+
+            for (unsigned int j = 0; j < limeSDRParams.m_nbRxChannels; j++)
+            {
+                qDebug("LimeSDRInputPlugin::enumSampleSources: device #%d channel %u: %s", i, j, (char *) deviceList[i]);
+                QString displayedName(QString("LimeSDR[%1:%2] %3").arg(i).arg(j).arg(serial.c_str()));
+                result.append(SamplingDevice(displayedName,
+                        m_hardwareID,
+                        m_deviceTypeID,
+                        QString(deviceList[i]),
+                        i,
+                        PluginInterface::SamplingDevice::PhysicalDevice,
+                        true,
+                        limeSDRParams.m_nbRxChannels,
+                        j));
+            }
         }
     }
 
@@ -97,11 +110,23 @@ PluginInterface::SamplingDevices LimeSDRInputPlugin::enumSampleSources()
     return result;
 }
 
-PluginInstanceGUI* LimeSDRInputPlugin::createSampleSourcePluginInstanceGUI(const QString& sourceId,QWidget **widget, DeviceSourceAPI *deviceAPI)
+#ifdef SERVER_MODE
+PluginInstanceGUI* LimeSDRInputPlugin::createSampleSourcePluginInstanceGUI(
+        const QString& sourceId __attribute((unused)),
+        QWidget **widget __attribute((unused)),
+        DeviceUISet *deviceUISet __attribute((unused)))
+{
+    return 0;
+}
+#else
+PluginInstanceGUI* LimeSDRInputPlugin::createSampleSourcePluginInstanceGUI(
+        const QString& sourceId,
+        QWidget **widget,
+        DeviceUISet *deviceUISet)
 {
     if(sourceId == m_deviceTypeID)
     {
-        LimeSDRInputGUI* gui = new LimeSDRInputGUI(deviceAPI);
+        LimeSDRInputGUI* gui = new LimeSDRInputGUI(deviceUISet);
         *widget = gui;
         return gui;
     }
@@ -110,6 +135,7 @@ PluginInstanceGUI* LimeSDRInputPlugin::createSampleSourcePluginInstanceGUI(const
         return 0;
     }
 }
+#endif
 
 bool LimeSDRInputPlugin::findSerial(const char *lmsInfoStr, std::string& serial)
 {

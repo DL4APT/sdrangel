@@ -51,6 +51,11 @@ public:
         int getSampleRate() const { return m_sampleRate; }
         qint64 getFrequencyOffset() const { return m_frequencyOffset; }
 
+        static MsgChannelizerNotification* create(int basebandSampleRate, int samplerate, qint64 frequencyOffset)
+        {
+            return new MsgChannelizerNotification(basebandSampleRate, samplerate, frequencyOffset);
+        }
+
     private:
         int m_basebandSampleRate;
         int m_sampleRate;
@@ -82,8 +87,8 @@ protected:
         typedef bool (IntHalfbandFilterEO1<UPCHANNELIZER_HB_FILTER_ORDER>::*WorkFunction)(Sample* sIn, Sample *sOut);
         IntHalfbandFilterEO1<UPCHANNELIZER_HB_FILTER_ORDER>* m_filter;
 #else
-        typedef bool (IntHalfbandFilterDB<UPCHANNELIZER_HB_FILTER_ORDER>::*WorkFunction)(Sample* sIn, Sample *sOut);
-        IntHalfbandFilterDB<UPCHANNELIZER_HB_FILTER_ORDER>* m_filter;
+        typedef bool (IntHalfbandFilterDB<qint32, UPCHANNELIZER_HB_FILTER_ORDER>::*WorkFunction)(Sample* sIn, Sample *sOut);
+        IntHalfbandFilterDB<qint32, UPCHANNELIZER_HB_FILTER_ORDER>* m_filter;
 #endif
         WorkFunction m_workFunction;
 

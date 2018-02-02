@@ -135,7 +135,8 @@ bool UpChannelizer::handleMessage(const Message& cmd)
 
         if (m_sampleSource != 0)
         {
-            m_sampleSource->handleMessage(notif);
+            DSPSignalNotification* rep = new DSPSignalNotification(notif); // make a copy
+            m_sampleSource->getInputMessageQueue()->push(rep);
         }
 
         emit outputSampleRateChanged();
@@ -157,14 +158,15 @@ bool UpChannelizer::handleMessage(const Message& cmd)
     }
     else
     {
-        if (m_sampleSource != 0)
-        {
-            return m_sampleSource->handleMessage(cmd);
-        }
-        else
-        {
-            return false;
-        }
+        return false;
+//        if (m_sampleSource != 0)
+//        {
+//            return m_sampleSource->handleMessage(cmd);
+//        }
+//        else
+//        {
+//            return false;
+//        }
     }
 }
 
@@ -172,7 +174,11 @@ void UpChannelizer::applyConfiguration()
 {
     if (m_outputSampleRate == 0)
     {
-        qDebug() << "UpChannelizer::applyConfiguration: m_outputSampleRate=0 aborting";
+        qDebug() << "UpChannelizer::applyConfiguration: aborting (out=0):"
+                << " out =" << m_outputSampleRate
+                << ", req =" << m_requestedInputSampleRate
+                << ", in =" << m_currentInputSampleRate
+                << ", fc =" << m_currentCenterFrequency;
         return;
     }
 
@@ -196,8 +202,8 @@ void UpChannelizer::applyConfiguration()
 
     if (m_sampleSource != 0)
     {
-        MsgChannelizerNotification notif(m_outputSampleRate, m_currentInputSampleRate, m_currentCenterFrequency);
-        m_sampleSource->handleMessage(notif);
+        MsgChannelizerNotification *notif = MsgChannelizerNotification::create(m_outputSampleRate, m_currentInputSampleRate, m_currentCenterFrequency);
+        m_sampleSource->getInputMessageQueue()->push(notif);
     }
 }
 
@@ -222,20 +228,20 @@ UpChannelizer::FilterStage::FilterStage(Mode mode) :
 }
 #else
 UpChannelizer::FilterStage::FilterStage(Mode mode) :
-    m_filter(new IntHalfbandFilterDB<UPCHANNELIZER_HB_FILTER_ORDER>),
+    m_filter(new IntHalfbandFilterDB<qint32, UPCHANNELIZER_HB_FILTER_ORDER>),
     m_workFunction(0)
 {
     switch(mode) {
         case ModeCenter:
-            m_workFunction = &IntHalfbandFilterDB<UPCHANNELIZER_HB_FILTER_ORDER>::workInterpolateCenter;
+            m_workFunction = &IntHalfbandFilterDB<qint32, UPCHANNELIZER_HB_FILTER_ORDER>::workInterpolateCenter;
             break;
 
         case ModeLowerHalf:
-            m_workFunction = &IntHalfbandFilterDB<UPCHANNELIZER_HB_FILTER_ORDER>::workInterpolateLowerHalf;
+            m_workFunction = &IntHalfbandFilterDB<qint32, UPCHANNELIZER_HB_FILTER_ORDER>::workInterpolateLowerHalf;
             break;
 
         case ModeUpperHalf:
-            m_workFunction = &IntHalfbandFilterDB<UPCHANNELIZER_HB_FILTER_ORDER>::workInterpolateUpperHalf;
+            m_workFunction = &IntHalfbandFilterDB<qint32, UPCHANNELIZER_HB_FILTER_ORDER>::workInterpolateUpperHalf;
             break;
     }
 }

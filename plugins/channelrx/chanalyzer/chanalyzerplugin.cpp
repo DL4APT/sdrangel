@@ -4,10 +4,11 @@
 #include "plugin/pluginapi.h"
 
 #include "chanalyzergui.h"
+#include "chanalyzer.h"
 
 const PluginDescriptor ChannelAnalyzerPlugin::m_pluginDescriptor = {
 	QString("Channel Analyzer"),
-	QString("2.0.0"),
+	QString("3.9.0"),
 	QString("(c) Edouard Griffiths, F4EXB"),
 	QString("https://github.com/f4exb/sdrangel"),
 	true,
@@ -30,21 +31,20 @@ void ChannelAnalyzerPlugin::initPlugin(PluginAPI* pluginAPI)
 	m_pluginAPI = pluginAPI;
 
 	// register demodulator
-	m_pluginAPI->registerRxChannel(ChannelAnalyzerGUI::m_channelID, this);
+	m_pluginAPI->registerRxChannel(ChannelAnalyzer::m_channelIdURI, ChannelAnalyzer::m_channelId, this);
 }
 
-PluginInstanceGUI* ChannelAnalyzerPlugin::createRxChannel(const QString& channelName, DeviceSourceAPI *deviceAPI)
+PluginInstanceGUI* ChannelAnalyzerPlugin::createRxChannelGUI(DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel)
 {
-	if(channelName == ChannelAnalyzerGUI::m_channelID)
-	{
-		ChannelAnalyzerGUI* gui = ChannelAnalyzerGUI::create(m_pluginAPI, deviceAPI);
-		return gui;
-	} else {
-		return NULL;
-	}
+    return ChannelAnalyzerGUI::create(m_pluginAPI, deviceUISet, rxChannel);
 }
 
-void ChannelAnalyzerPlugin::createInstanceChannelAnalyzer(DeviceSourceAPI *deviceAPI)
+BasebandSampleSink* ChannelAnalyzerPlugin::createRxChannelBS(DeviceSourceAPI *deviceAPI)
 {
-	ChannelAnalyzerGUI::create(m_pluginAPI, deviceAPI);
+    return new ChannelAnalyzer(deviceAPI);
+}
+
+ChannelSinkAPI* ChannelAnalyzerPlugin::createRxChannelCS(DeviceSourceAPI *deviceAPI)
+{
+    return new ChannelAnalyzer(deviceAPI);
 }

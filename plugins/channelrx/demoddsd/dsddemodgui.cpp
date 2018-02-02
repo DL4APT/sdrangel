@@ -18,6 +18,7 @@
 #include "dsddemodgui.h"
 
 #include <device/devicesourceapi.h>
+#include "device/deviceuiset.h"
 #include <dsp/downchannelizer.h>
 #include <QDockWidget>
 #include <QMainWindow>
@@ -37,11 +38,9 @@
 #include "dsddemodbaudrates.h"
 #include "dsddemod.h"
 
-const QString DSDDemodGUI::m_channelID = "sdrangel.channel.dsddemod";
-
-DSDDemodGUI* DSDDemodGUI::create(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI)
+DSDDemodGUI* DSDDemodGUI::create(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel)
 {
-    DSDDemodGUI* gui = new DSDDemodGUI(pluginAPI, deviceAPI);
+    DSDDemodGUI* gui = new DSDDemodGUI(pluginAPI, deviceUISet, rxChannel);
 	return gui;
 }
 
@@ -197,6 +196,12 @@ void DSDDemodGUI::on_audioMute_toggled(bool checked)
     applySettings();
 }
 
+void DSDDemodGUI::on_highPassFilter_toggled(bool checked)
+{
+    m_settings.m_highPassFilter = checked;
+    applySettings();
+}
+
 void DSDDemodGUI::on_symbolPLLLock_toggled(bool checked)
 {
     if (checked) {
@@ -228,13 +233,25 @@ void DSDDemodGUI::onMenuDialogCalled(const QPoint &p)
     BasicChannelSettingsDialog dialog(&m_channelMarker, this);
     dialog.move(p);
     dialog.exec();
+
+    m_settings.m_inputFrequencyOffset = m_channelMarker.getCenterFrequency();
+    m_settings.m_udpAddress = m_channelMarker.getUDPAddress(),
+    m_settings.m_udpPort =  m_channelMarker.getUDPSendPort(),
+    m_settings.m_rgbColor = m_channelMarker.getColor().rgb();
+    m_settings.m_title = m_channelMarker.getTitle();
+
+    setWindowTitle(m_settings.m_title);
+    setTitleColor(m_settings.m_rgbColor);
+    displayUDPAddress();
+
+    applySettings();
 }
 
-DSDDemodGUI::DSDDemodGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidget* parent) :
+DSDDemodGUI::DSDDemodGUI(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel, QWidget* parent) :
 	RollupWidget(parent),
 	ui(new Ui::DSDDemodGUI),
 	m_pluginAPI(pluginAPI),
-	m_deviceAPI(deviceAPI),
+	m_deviceUISet(deviceUISet),
 	m_channelMarker(this),
 	m_doApplySettings(true),
 	m_signalFormat(signalFormatNone),
@@ -252,8 +269,8 @@ DSDDemodGUI::DSDDemodGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidg
 	connect(this, SIGNAL(widgetRolled(QWidget*,bool)), this, SLOT(onWidgetRolled(QWidget*,bool)));
     connect(this, SIGNAL(customContextMenuRequested(const QPoint &)), this, SLOT(onMenuDialogCalled(const QPoint &)));
 
-	m_scopeVis = new ScopeVis(ui->glScope);
-	m_dsdDemod = new DSDDemod(m_deviceAPI);
+	m_scopeVis = new ScopeVis(SDR_RX_SCALEF, ui->glScope);
+	m_dsdDemod = (DSDDemod*) rxChannel; //new DSDDemod(m_deviceUISet->m_deviceSourceAPI);
 	m_dsdDemod->setScopeSink(m_scopeVis);
 	m_dsdDemod->setMessageQueueToGUI(getInputMessageQueue());
 
@@ -271,18 +288,22 @@ DSDDemodGUI::DSDDemodGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidg
     ui->deltaFrequency->setValueRange(false, 7, -9999999, 9999999);
     ui->channelPowerMeter->setColorTheme(LevelMeterSignalDB::ColorGreenAndBlue);
 
-
-	m_channelMarker.setTitle(windowTitle());
+    m_channelMarker.blockSignals(true);
 	m_channelMarker.setColor(Qt::cyan);
 	m_channelMarker.setBandwidth(10000);
 	m_channelMarker.setCenterFrequency(0);
-	m_channelMarker.setVisible(true);
+    m_channelMarker.setTitle("DSD Demodulator");
+    m_channelMarker.setUDPAddress("127.0.0.1");
+    m_channelMarker.setUDPSendPort(9999);
+    m_channelMarker.blockSignals(false);
+	m_channelMarker.setVisible(true); // activate signal on the last setting only
 
-	connect(&m_channelMarker, SIGNAL(changed()), this, SLOT(channelMarkerChanged()));
+	m_deviceUISet->registerRxChannelInstance(DSDDemod::m_channelIdURI, this);
+	m_deviceUISet->addChannelMarker(&m_channelMarker);
+	m_deviceUISet->addRollupWidget(this);
 
-	m_deviceAPI->registerChannelInstance(m_channelID, this);
-	m_deviceAPI->addChannelMarker(&m_channelMarker);
-	m_deviceAPI->addRollupWidget(this);
+	connect(&m_channelMarker, SIGNAL(changedByCursor()), this, SLOT(channelMarkerChangedByCursor()));
+    connect(&m_channelMarker, SIGNAL(highlightedByCursor()), this, SLOT(channelMarkerHighlightedByCursor()));
 
 	ui->scopeGUI->setBuddies(m_scopeVis->getInputMessageQueue(), m_scopeVis, ui->glScope);
 
@@ -291,14 +312,13 @@ DSDDemodGUI::DSDDemodGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidg
 
 	updateMyPosition();
 	displaySettings();
-	displayUDPAddress();
 	applySettings(true);
 }
 
 DSDDemodGUI::~DSDDemodGUI()
 {
-    m_deviceAPI->removeChannelInstance(this);
-	delete m_dsdDemod;
+    m_deviceUISet->removeRxChannelInstance(this);
+	delete m_dsdDemod; // TODO: check this: when the GUI closes it has to delete the demodulator
 	delete ui;
 }
 
@@ -317,7 +337,7 @@ void DSDDemodGUI::updateMyPosition()
 
 void DSDDemodGUI::displayUDPAddress()
 {
-    ui->udpOutput->setToolTip(QString("Copy audio output to UDP %1:%2").arg(m_channelMarker.getUDPAddress()).arg(m_channelMarker.getUDPSendPort()));
+    ui->udpOutput->setToolTip(QString("Copy audio output to UDP %1:%2").arg(m_settings.m_udpAddress).arg(m_settings.m_udpPort));
 }
 
 void DSDDemodGUI::displaySettings()
@@ -325,10 +345,13 @@ void DSDDemodGUI::displaySettings()
     m_channelMarker.blockSignals(true);
     m_channelMarker.setCenterFrequency(m_settings.m_inputFrequencyOffset);
     m_channelMarker.setColor(m_settings.m_rgbColor);
-    setTitleColor(m_settings.m_rgbColor);
+    m_channelMarker.setTitle(m_settings.m_title);
     m_channelMarker.blockSignals(false);
+    setTitleColor(m_settings.m_rgbColor); // activate signal on the last setting only
 
+    setTitleColor(m_settings.m_rgbColor);
     setWindowTitle(m_channelMarker.getTitle());
+    displayUDPAddress();
 
     blockApplySettings(true);
 
@@ -383,16 +406,12 @@ void DSDDemodGUI::applySettings(bool force)
 
 void DSDDemodGUI::leaveEvent(QEvent*)
 {
-	blockApplySettings(true);
 	m_channelMarker.setHighlighted(false);
-	blockApplySettings(false);
 }
 
 void DSDDemodGUI::enterEvent(QEvent*)
 {
-	blockApplySettings(true);
 	m_channelMarker.setHighlighted(true);
-	blockApplySettings(false);
 }
 
 void DSDDemodGUI::blockApplySettings(bool block)
@@ -508,17 +527,17 @@ void DSDDemodGUI::formatStatusText()
             strncpy(&m_formatStatusText[14], "---", 82-14);
     	}
 
-        char dest[11];
+        char dest[13];
 
         if ( m_dsdDemod->getDecoder().getYSFDecoder().radioIdMode())
         {
-            snprintf(dest, 10, "%-5s:%-5s",
+            snprintf(dest, 12, "%-5s:%-5s",
                     m_dsdDemod->getDecoder().getYSFDecoder().getDestId(),
                     m_dsdDemod->getDecoder().getYSFDecoder().getSrcId());
         }
         else
         {
-            snprintf(dest, 10, "%-10s", m_dsdDemod->getDecoder().getYSFDecoder().getDest());
+            snprintf(dest, 11, "%-10s", m_dsdDemod->getDecoder().getYSFDecoder().getDest());
         }
 
         snprintf(&m_formatStatusText[17], 82-17, "|%-10s>%s|%-10s>%-10s|%-5s",
@@ -539,13 +558,17 @@ void DSDDemodGUI::formatStatusText()
     m_formatStatusText[82] = '\0'; // guard
 }
 
-void DSDDemodGUI::channelMarkerChanged()
+void DSDDemodGUI::channelMarkerChangedByCursor()
 {
-    setWindowTitle(m_channelMarker.getTitle());
-    displayUDPAddress();
+    ui->deltaFrequency->setValue(m_channelMarker.getCenterFrequency());
+    m_settings.m_inputFrequencyOffset = m_channelMarker.getCenterFrequency();
     applySettings();
 }
 
+void DSDDemodGUI::channelMarkerHighlightedByCursor()
+{
+    setHighlighted(m_channelMarker.getHighlighted());
+}
 
 void DSDDemodGUI::tick()
 {

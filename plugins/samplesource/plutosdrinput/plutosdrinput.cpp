@@ -16,8 +16,12 @@
 
 #include <QDebug>
 
+#include "SWGDeviceSettings.h"
+#include "SWGDeviceState.h"
+
 #include "dsp/filerecord.h"
 #include "dsp/dspcommands.h"
+#include "dsp/dspengine.h"
 #include "device/devicesourceapi.h"
 #include "device/devicesinkapi.h"
 #include "plutosdr/deviceplutosdrparams.h"
@@ -30,6 +34,7 @@
 
 MESSAGE_CLASS_DEFINITION(PlutoSDRInput::MsgConfigurePlutoSDR, Message)
 MESSAGE_CLASS_DEFINITION(PlutoSDRInput::MsgFileRecord, Message)
+MESSAGE_CLASS_DEFINITION(PlutoSDRInput::MsgStartStop, Message)
 
 PlutoSDRInput::PlutoSDRInput(DeviceSourceAPI *deviceAPI) :
     m_deviceAPI(deviceAPI),
@@ -61,6 +66,11 @@ PlutoSDRInput::~PlutoSDRInput()
 void PlutoSDRInput::destroy()
 {
     delete this;
+}
+
+void PlutoSDRInput::init()
+{
+    applySettings(m_settings, true);
 }
 
 bool PlutoSDRInput::start()
@@ -108,6 +118,33 @@ void PlutoSDRInput::stop()
     m_running = false;
 }
 
+QByteArray PlutoSDRInput::serialize() const
+{
+    return m_settings.serialize();
+}
+
+bool PlutoSDRInput::deserialize(const QByteArray& data)
+{
+    bool success = true;
+
+    if (!m_settings.deserialize(data))
+    {
+        m_settings.resetToDefaults();
+        success = false;
+    }
+
+    MsgConfigurePlutoSDR* message = MsgConfigurePlutoSDR::create(m_settings, true);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue)
+    {
+        MsgConfigurePlutoSDR* messageToGUI = MsgConfigurePlutoSDR::create(m_settings, true);
+        m_guiMessageQueue->push(messageToGUI);
+    }
+
+    return success;
+}
+
 const QString& PlutoSDRInput::getDeviceDescription() const
 {
     return m_deviceDescription;
@@ -122,6 +159,20 @@ quint64 PlutoSDRInput::getCenterFrequency() const
     return m_settings.m_centerFrequency;
 }
 
+void PlutoSDRInput::setCenterFrequency(qint64 centerFrequency)
+{
+    PlutoSDRInputSettings settings = m_settings;
+    settings.m_centerFrequency = centerFrequency;
+
+    MsgConfigurePlutoSDR* message = MsgConfigurePlutoSDR::create(settings, false);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue)
+    {
+        MsgConfigurePlutoSDR* messageToGUI = MsgConfigurePlutoSDR::create(settings, false);
+        m_guiMessageQueue->push(messageToGUI);
+    }
+}
 
 bool PlutoSDRInput::handleMessage(const Message& message)
 {
@@ -146,6 +197,27 @@ bool PlutoSDRInput::handleMessage(const Message& message)
             m_fileSink->startRecording();
         } else {
             m_fileSink->stopRecording();
+        }
+
+        return true;
+    }
+    else if (MsgStartStop::match(message))
+    {
+        MsgStartStop& cmd = (MsgStartStop&) message;
+        qDebug() << "PlutoSDRInput::handleMessage: MsgStartStop: " << (cmd.getStartStop() ? "start" : "stop");
+
+        if (cmd.getStartStop())
+        {
+            if (m_deviceAPI->initAcquisition())
+            {
+                m_deviceAPI->startAcquisition();
+                DSPEngine::instance()->startAudioOutput();
+            }
+        }
+        else
+        {
+            m_deviceAPI->stopAcquisition();
+            DSPEngine::instance()->stopAudioOutput();
         }
 
         return true;
@@ -187,7 +259,8 @@ bool PlutoSDRInput::openDevice()
         qDebug("PlutoSDRInput::openDevice: look at Tx buddy");
 
         DeviceSinkAPI *sinkBuddy = m_deviceAPI->getSinkBuddies()[0];
-        m_deviceShared = *((DevicePlutoSDRShared *) sinkBuddy->getBuddySharedPtr()); // copy parameters
+        DevicePlutoSDRShared* buddySharedPtr = (DevicePlutoSDRShared*) sinkBuddy->getBuddySharedPtr();
+        m_deviceShared.m_deviceParams = buddySharedPtr->m_deviceParams;
 
         if (m_deviceShared.m_deviceParams == 0)
         {
@@ -355,7 +428,7 @@ bool PlutoSDRInput::applySettings(const PlutoSDRInputSettings& settings, bool fo
                  << " -FIR-> " << m_deviceSampleRates.m_firRate;
 
         forwardChangeOtherDSP = true;
-        forwardChangeOwnDSP = (m_settings.m_devSampleRate != settings.m_devSampleRate);
+        forwardChangeOwnDSP = (m_settings.m_devSampleRate != settings.m_devSampleRate) || force;
     }
 
     if ((m_settings.m_log2Decim != settings.m_log2Decim) || force)
@@ -378,17 +451,18 @@ bool PlutoSDRInput::applySettings(const PlutoSDRInputSettings& settings, bool fo
     std::vector<std::string> params;
     bool paramsToSet = false;
 
-    if (force || (m_settings.m_centerFrequency != settings.m_centerFrequency)
-            || (m_settings.m_fcPos != settings.m_fcPos)
-            || (m_settings.m_transverterMode != settings.m_transverterMode)
-            || (m_settings.m_transverterDeltaFrequency != settings.m_transverterDeltaFrequency))
+    if ((m_settings.m_centerFrequency != settings.m_centerFrequency)
+        || (m_settings.m_fcPos != settings.m_fcPos)
+        || (m_settings.m_log2Decim != settings.m_log2Decim)
+        || (m_settings.m_transverterMode != settings.m_transverterMode)
+        || (m_settings.m_transverterDeltaFrequency != settings.m_transverterDeltaFrequency) || force)
     {
         qint64 deviceCenterFrequency = settings.m_centerFrequency;
         deviceCenterFrequency -= settings.m_transverterMode ? settings.m_transverterDeltaFrequency : 0;
         qint64 f_img = deviceCenterFrequency;
         quint32 devSampleRate = settings.m_devSampleRate;
 
-        if ((m_settings.m_log2Decim == 0) || (settings.m_fcPos == PlutoSDRInputSettings::FC_POS_CENTER))
+        if ((settings.m_log2Decim == 0) || (settings.m_fcPos == PlutoSDRInputSettings::FC_POS_CENTER))
         {
             f_img = deviceCenterFrequency;
         }
@@ -560,3 +634,30 @@ float PlutoSDRInput::getTemperature()
     DevicePlutoSDRBox *plutoBox =  m_deviceShared.m_deviceParams->getBox();
     return plutoBox->getTemp();
 }
+
+int PlutoSDRInput::webapiRunGet(
+        SWGSDRangel::SWGDeviceState& response,
+        QString& errorMessage __attribute__((unused)))
+{
+    m_deviceAPI->getDeviceEngineStateStr(*response.getState());
+    return 200;
+}
+
+int PlutoSDRInput::webapiRun(
+        bool run,
+        SWGSDRangel::SWGDeviceState& response,
+        QString& errorMessage __attribute__((unused)))
+{
+    m_deviceAPI->getDeviceEngineStateStr(*response.getState());
+    MsgStartStop *message = MsgStartStop::create(run);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue) // forward to GUI if any
+    {
+        MsgStartStop *msgToGUI = MsgStartStop::create(run);
+        m_guiMessageQueue->push(msgToGUI);
+    }
+
+    return 200;
+}
+

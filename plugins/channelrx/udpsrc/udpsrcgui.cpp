@@ -18,6 +18,7 @@
 #include "udpsrcgui.h"
 
 #include "device/devicesourceapi.h"
+#include "device/deviceuiset.h"
 #include "plugin/pluginapi.h"
 #include "dsp/spectrumvis.h"
 #include "dsp/dspengine.h"
@@ -29,11 +30,9 @@
 
 #include "udpsrc.h"
 
-const QString UDPSrcGUI::m_channelID = "sdrangel.channel.udpsrc";
-
-UDPSrcGUI* UDPSrcGUI::create(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI)
+UDPSrcGUI* UDPSrcGUI::create(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel)
 {
-	UDPSrcGUI* gui = new UDPSrcGUI(pluginAPI, deviceAPI);
+	UDPSrcGUI* gui = new UDPSrcGUI(pluginAPI, deviceUISet, rxChannel);
 	return gui;
 }
 
@@ -96,17 +95,16 @@ bool UDPSrcGUI::handleMessage(const Message& message __attribute__((unused)))
 	return false;
 }
 
-void UDPSrcGUI::channelMarkerChanged()
+void UDPSrcGUI::channelMarkerChangedByCursor()
 {
-    //m_settings.m_inputFrequencyOffset = m_channelMarker.getCenterFrequency();
-    //m_settings.m_rfBandwidth = m_channelMarker.getBandwidth();
-    setWindowTitle(m_channelMarker.getTitle());
-    m_settings.m_udpAddress = m_channelMarker.getUDPAddress(),
-    m_settings.m_udpPort =  m_channelMarker.getUDPSendPort(),
-    m_settings.m_rgbColor = m_channelMarker.getColor().rgb();
-    setTitleColor(m_settings.m_rgbColor);
-    displayUDPAddress();
-    applySettings();
+    ui->deltaFrequency->setValue(m_channelMarker.getCenterFrequency());
+    m_settings.m_inputFrequencyOffset = m_channelMarker.getCenterFrequency();
+    applySettingsImmediate();
+}
+
+void UDPSrcGUI::channelMarkerHighlightedByCursor()
+{
+    setHighlighted(m_channelMarker.getHighlighted());
 }
 
 void UDPSrcGUI::tick()
@@ -131,11 +129,11 @@ void UDPSrcGUI::tick()
 	m_tickCount++;
 }
 
-UDPSrcGUI::UDPSrcGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidget* parent) :
+UDPSrcGUI::UDPSrcGUI(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel, QWidget* parent) :
 	RollupWidget(parent),
 	ui(new Ui::UDPSrcGUI),
 	m_pluginAPI(pluginAPI),
-	m_deviceAPI(deviceAPI),
+	m_deviceUISet(deviceUISet),
 	m_udpSrc(0),
 	m_channelMarker(this),
 	m_channelPowerAvg(4, 1e-10),
@@ -149,8 +147,8 @@ UDPSrcGUI::UDPSrcGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidget* 
     connect(this, SIGNAL(customContextMenuRequested(const QPoint &)), this, SLOT(onMenuDialogCalled(const QPoint &)));
 	setAttribute(Qt::WA_DeleteOnClose, true);
 
-	m_spectrumVis = new SpectrumVis(ui->glSpectrum);
-	m_udpSrc = new UDPSrc(m_deviceAPI);
+	m_spectrumVis = new SpectrumVis(SDR_RX_SCALEF, ui->glSpectrum);
+	m_udpSrc = (UDPSrc*) rxChannel; //new UDPSrc(m_deviceUISet->m_deviceSourceAPI);
 	m_udpSrc->setSpectrum(m_spectrumVis);
 
 	ui->fmDeviation->setEnabled(false);
@@ -169,24 +167,28 @@ UDPSrcGUI::UDPSrcGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidget* 
 	ui->glSpectrum->connectTimer(MainWindow::getInstance()->getMasterTimer());
 	connect(&MainWindow::getInstance()->getMasterTimer(), SIGNAL(timeout()), this, SLOT(tick()));
 
+	m_channelMarker.blockSignals(true);
 	m_channelMarker.setBandwidth(16000);
 	m_channelMarker.setCenterFrequency(0);
 	m_channelMarker.setTitle("UDP Sample Source");
 	m_channelMarker.setUDPAddress("127.0.0.1");
 	m_channelMarker.setUDPSendPort(9999);
 	m_channelMarker.setUDPReceivePort(9998);
-	m_channelMarker.setVisible(true);
     m_channelMarker.setColor(m_settings.m_rgbColor);
-    setTitleColor(m_channelMarker.getColor());
+    m_channelMarker.blockSignals(false);
+	m_channelMarker.setVisible(true); // activate signal on the last setting only
+
+	setTitleColor(m_channelMarker.getColor());
 
 	m_settings.setChannelMarker(&m_channelMarker);
 	m_settings.setSpectrumGUI(ui->spectrumGUI);
 
-	connect(&m_channelMarker, SIGNAL(changed()), this, SLOT(channelMarkerChanged()));
+	m_deviceUISet->registerRxChannelInstance(UDPSrc::m_channelIdURI, this);
+	m_deviceUISet->addChannelMarker(&m_channelMarker);
+	m_deviceUISet->addRollupWidget(this);
 
-	m_deviceAPI->registerChannelInstance(m_channelID, this);
-	m_deviceAPI->addChannelMarker(&m_channelMarker);
-	m_deviceAPI->addRollupWidget(this);
+	connect(&m_channelMarker, SIGNAL(changedByCursor()), this, SLOT(channelMarkerChangedByCursor()));
+    connect(&m_channelMarker, SIGNAL(highlightedByCursor()), this, SLOT(channelMarkerHighlightedByCursor()));
 
 	ui->spectrumGUI->setBuddies(m_spectrumVis->getInputMessageQueue(), m_spectrumVis, ui->glSpectrum);
 
@@ -197,8 +199,8 @@ UDPSrcGUI::UDPSrcGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidget* 
 
 UDPSrcGUI::~UDPSrcGUI()
 {
-    m_deviceAPI->removeChannelInstance(this);
-	delete m_udpSrc;
+    m_deviceUISet->removeRxChannelInstance(this);
+	delete m_udpSrc; // TODO: check this: when the GUI closes it has to delete the demodulator
 	delete m_spectrumVis;
 	delete ui;
 }
@@ -212,13 +214,17 @@ void UDPSrcGUI::displaySettings()
 {
     m_channelMarker.blockSignals(true);
     m_channelMarker.setCenterFrequency(m_settings.m_inputFrequencyOffset);
-    m_channelMarker.setColor(m_settings.m_rgbColor);
-    setTitleColor(m_settings.m_rgbColor);
+    m_channelMarker.setBandwidth(m_settings.m_rfBandwidth);
+    m_channelMarker.setTitle(m_settings.m_title);
     m_channelMarker.blockSignals(false);
+    m_channelMarker.setColor(m_settings.m_rgbColor); // activate signal on the last setting only
 
+    setTitleColor(m_settings.m_rgbColor);
     setWindowTitle(m_channelMarker.getTitle());
+    displayUDPAddress();
 
     ui->deltaFrequency->setValue(m_channelMarker.getCenterFrequency());
+
     ui->sampleRate->setText(QString("%1").arg(m_settings.m_outputSampleRate, 0));
     setSampleFormatIndex(m_settings.m_sampleFormat);
 
@@ -256,7 +262,7 @@ void UDPSrcGUI::setSampleFormatIndex(const UDPSrcSettings::SampleFormat& sampleF
 {
     switch(sampleFormat)
     {
-        case UDPSrcSettings::FormatS16LE:
+        case UDPSrcSettings::FormatIQ:
             ui->sampleFormat->setCurrentIndex(0);
             break;
         case UDPSrcSettings::FormatNFM:
@@ -297,7 +303,7 @@ void UDPSrcGUI::setSampleFormat(int index)
     switch(index)
     {
         case 0:
-            m_settings.m_sampleFormat = UDPSrcSettings::FormatS16LE;
+            m_settings.m_sampleFormat = UDPSrcSettings::FormatIQ;
             ui->fmDeviation->setEnabled(false);
             break;
         case 1:
@@ -337,7 +343,7 @@ void UDPSrcGUI::setSampleFormat(int index)
             ui->fmDeviation->setEnabled(false);
             break;
         default:
-            m_settings.m_sampleFormat = UDPSrcSettings::FormatS16LE;
+            m_settings.m_sampleFormat = UDPSrcSettings::FormatIQ;
             ui->fmDeviation->setEnabled(false);
             break;
     }
@@ -389,6 +395,18 @@ void UDPSrcGUI::on_sampleFormat_currentIndexChanged(int index)
 	ui->applyBtn->setStyleSheet("QPushButton { background-color : green; }");
 }
 
+void UDPSrcGUI::on_sampleSize_currentIndexChanged(int index)
+{
+    if ((index < 0) || (index >= UDPSrcSettings::SizeNone)) {
+        return;
+    }
+
+    m_settings.m_sampleSize = (UDPSrcSettings::SampleSize) index;
+
+    ui->applyBtn->setEnabled(true);
+    ui->applyBtn->setStyleSheet("QPushButton { background-color : green; }");
+}
+
 void UDPSrcGUI::on_sampleRate_textEdited(const QString& arg1 __attribute__((unused)))
 {
     bool ok;
@@ -413,7 +431,7 @@ void UDPSrcGUI::on_rfBandwidth_textEdited(const QString& arg1 __attribute__((unu
     bool ok;
     Real rfBandwidth = ui->rfBandwidth->text().toDouble(&ok);
 
-    if((!ok) || (rfBandwidth > m_settings.m_outputSampleRate))
+    if ((!ok) || (rfBandwidth > m_settings.m_outputSampleRate))
     {
         m_settings.m_rfBandwidth = m_settings.m_outputSampleRate;
         ui->rfBandwidth->setText(QString("%1").arg(m_settings.m_rfBandwidth, 0));
@@ -452,10 +470,8 @@ void UDPSrcGUI::on_applyBtn_clicked()
 {
     if (m_rfBandwidthChanged)
     {
-        blockApplySettings(true);
         m_channelMarker.setBandwidth((int) m_settings.m_rfBandwidth);
         m_rfBandwidthChanged = false;
-        blockApplySettings(false);
     }
 
     ui->glSpectrum->setSampleRate(m_settings.m_outputSampleRate);
@@ -533,20 +549,29 @@ void UDPSrcGUI::onMenuDialogCalled(const QPoint &p)
     BasicChannelSettingsDialog dialog(&m_channelMarker, this);
     dialog.move(p);
     dialog.exec();
+
+
+    m_settings.m_inputFrequencyOffset = m_channelMarker.getCenterFrequency();
+    m_settings.m_udpAddress = m_channelMarker.getUDPAddress(),
+    m_settings.m_udpPort =  m_channelMarker.getUDPSendPort(),
+    m_settings.m_rgbColor = m_channelMarker.getColor().rgb();
+    m_settings.m_title = m_channelMarker.getTitle();
+
+    setWindowTitle(m_settings.m_title);
+    setTitleColor(m_settings.m_rgbColor);
+    displayUDPAddress();
+
+    applySettingsImmediate();
 }
 
 void UDPSrcGUI::leaveEvent(QEvent*)
 {
-	blockApplySettings(true);
 	m_channelMarker.setHighlighted(false);
-	blockApplySettings(false);
 }
 
 void UDPSrcGUI::enterEvent(QEvent*)
 {
-	blockApplySettings(true);
 	m_channelMarker.setHighlighted(true);
-	blockApplySettings(false);
 }
 
 

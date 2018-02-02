@@ -22,7 +22,6 @@ class Serializable;
 
 struct WFMDemodSettings
 {
-    int m_inputSampleRate;
     qint64 m_inputFrequencyOffset;
     Real m_rfBandwidth;
     Real m_afBandwidth;
@@ -34,6 +33,7 @@ struct WFMDemodSettings
     QString m_udpAddress;
     quint16 m_udpPort;
     quint32 m_rgbColor;
+    QString m_title;
 
     Serializable *m_channelMarker;
 

@@ -18,8 +18,12 @@
 #include <errno.h>
 #include <QDebug>
 
+#include "SWGDeviceSettings.h"
+#include "SWGDeviceState.h"
+
 #include "airspygui.h"
 #include "airspyinput.h"
+#include "airspyplugin.h"
 
 #include <device/devicesourceapi.h>
 #include <dsp/filerecord.h>
@@ -29,6 +33,7 @@
 #include "airspythread.h"
 
 MESSAGE_CLASS_DEFINITION(AirspyInput::MsgConfigureAirspy, Message)
+MESSAGE_CLASS_DEFINITION(AirspyInput::MsgStartStop, Message)
 MESSAGE_CLASS_DEFINITION(AirspyInput::MsgFileRecord, Message)
 
 const qint64 AirspyInput::loLowLimitFreq = 24000000L;
@@ -143,6 +148,11 @@ bool AirspyInput::openDevice()
     return true;
 }
 
+void AirspyInput::init()
+{
+    applySettings(m_settings, true);
+}
+
 bool AirspyInput::start()
 {
 	QMutexLocker mutexLocker(&m_mutex);
@@ -204,6 +214,33 @@ void AirspyInput::stop()
 	m_running = false;
 }
 
+QByteArray AirspyInput::serialize() const
+{
+    return m_settings.serialize();
+}
+
+bool AirspyInput::deserialize(const QByteArray& data)
+{
+    bool success = true;
+
+    if (!m_settings.deserialize(data))
+    {
+        m_settings.resetToDefaults();
+        success = false;
+    }
+
+    MsgConfigureAirspy* message = MsgConfigureAirspy::create(m_settings, true);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue)
+    {
+        MsgConfigureAirspy* messageToGUI = MsgConfigureAirspy::create(m_settings, true);
+        m_guiMessageQueue->push(messageToGUI);
+    }
+
+    return success;
+}
+
 const QString& AirspyInput::getDeviceDescription() const
 {
 	return m_deviceDescription;
@@ -220,6 +257,21 @@ quint64 AirspyInput::getCenterFrequency() const
 	return m_settings.m_centerFrequency;
 }
 
+void AirspyInput::setCenterFrequency(qint64 centerFrequency)
+{
+    AirspySettings settings = m_settings;
+    settings.m_centerFrequency = centerFrequency;
+
+    MsgConfigureAirspy* message = MsgConfigureAirspy::create(settings, false);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue)
+    {
+        MsgConfigureAirspy* messageToGUI = MsgConfigureAirspy::create(settings, false);
+        m_guiMessageQueue->push(messageToGUI);
+    }
+}
+
 bool AirspyInput::handleMessage(const Message& message)
 {
 	if (MsgConfigureAirspy::match(message))
@@ -231,11 +283,32 @@ bool AirspyInput::handleMessage(const Message& message)
 
 		if (!success)
 		{
-			qDebug("Airspy config error");
+			qDebug("AirspyInput::handleMessage: Airspy config error");
 		}
 
 		return true;
 	}
+    else if (MsgStartStop::match(message))
+    {
+        MsgStartStop& cmd = (MsgStartStop&) message;
+        qDebug() << "AirspyInput::handleMessage: MsgStartStop: " << (cmd.getStartStop() ? "start" : "stop");
+
+        if (cmd.getStartStop())
+        {
+            if (m_deviceAPI->initAcquisition())
+            {
+                m_deviceAPI->startAcquisition();
+                DSPEngine::instance()->startAudioOutput();
+            }
+        }
+        else
+        {
+            m_deviceAPI->stopAcquisition();
+            DSPEngine::instance()->stopAudioOutput();
+        }
+
+        return true;
+    }
     else if (MsgFileRecord::match(message))
     {
         MsgFileRecord& conf = (MsgFileRecord&) message;
@@ -255,7 +328,7 @@ bool AirspyInput::handleMessage(const Message& message)
 	}
 }
 
-void AirspyInput::setCenterFrequency(quint64 freq_hz)
+void AirspyInput::setDeviceCenterFrequency(quint64 freq_hz)
 {
 	qint64 df = ((qint64)freq_hz * m_settings.m_LOppmTenths) / 10000000LL;
 	freq_hz += df;
@@ -264,11 +337,11 @@ void AirspyInput::setCenterFrequency(quint64 freq_hz)
 
 	if (rc != AIRSPY_SUCCESS)
 	{
-		qWarning("AirspyInput::setCenterFrequency: could not frequency to %llu Hz", freq_hz);
+		qWarning("AirspyInput::setDeviceCenterFrequency: could not frequency to %llu Hz", freq_hz);
 	}
 	else
 	{
-		qWarning("AirspyInput::setCenterFrequency: frequency set to %llu Hz", freq_hz);
+		qDebug("AirspyInput::setDeviceCenterFrequency: frequency set to %llu Hz", freq_hz);
 	}
 }
 
@@ -281,14 +354,10 @@ bool AirspyInput::applySettings(const AirspySettings& settings, bool force)
 
 	qDebug() << "AirspyInput::applySettings";
 
-	if (m_settings.m_dcBlock != settings.m_dcBlock)
-	{
+    if ((m_settings.m_dcBlock != settings.m_dcBlock) ||
+        (m_settings.m_iqCorrection != settings.m_iqCorrection) || force)
+    {
 		m_settings.m_dcBlock = settings.m_dcBlock;
-		m_deviceAPI->configureCorrections(m_settings.m_dcBlock, m_settings.m_iqCorrection);
-	}
-
-	if (m_settings.m_iqCorrection != settings.m_iqCorrection)
-	{
 		m_settings.m_iqCorrection = settings.m_iqCorrection;
 		m_deviceAPI->configureCorrections(m_settings.m_dcBlock, m_settings.m_iqCorrection);
 	}
@@ -324,23 +393,24 @@ bool AirspyInput::applySettings(const AirspySettings& settings, bool force)
 
 	if ((m_settings.m_log2Decim != settings.m_log2Decim) || force)
 	{
-		m_settings.m_log2Decim = settings.m_log2Decim;
 		forwardChange = true;
 
 		if (m_airspyThread != 0)
 		{
-			m_airspyThread->setLog2Decimation(m_settings.m_log2Decim);
-			qDebug() << "AirspyInput: set decimation to " << (1<<m_settings.m_log2Decim);
+			m_airspyThread->setLog2Decimation(settings.m_log2Decim);
+			qDebug() << "AirspyInput: set decimation to " << (1<<settings.m_log2Decim);
 		}
 	}
 
-	if (force || (m_settings.m_centerFrequency != settings.m_centerFrequency)
-	        || (m_settings.m_LOppmTenths != settings.m_LOppmTenths)
-	        || (m_settings.m_fcPos != settings.m_fcPos)
-	        || (m_settings.m_transverterMode != settings.m_transverterMode)
-	        || (m_settings.m_transverterDeltaFrequency != settings.m_transverterDeltaFrequency))
+	if ((m_settings.m_centerFrequency != settings.m_centerFrequency)
+        || (m_settings.m_LOppmTenths != settings.m_LOppmTenths)
+        || (m_settings.m_fcPos != settings.m_fcPos)
+        || (m_settings.m_log2Decim != settings.m_log2Decim)
+        || (m_settings.m_transverterMode != settings.m_transverterMode)
+        || (m_settings.m_transverterDeltaFrequency != settings.m_transverterDeltaFrequency) || force)
 	{
         m_settings.m_centerFrequency = settings.m_centerFrequency;
+        m_settings.m_log2Decim = settings.m_log2Decim;
         m_settings.m_transverterMode = settings.m_transverterMode;
         m_settings.m_transverterDeltaFrequency = settings.m_transverterDeltaFrequency;
         m_settings.m_LOppmTenths = settings.m_LOppmTenths;
@@ -371,7 +441,7 @@ bool AirspyInput::applySettings(const AirspySettings& settings, bool force)
 
 		if (m_dev != 0)
 		{
-			setCenterFrequency(deviceCenterFrequency);
+			setDeviceCenterFrequency(deviceCenterFrequency);
 
 			qDebug() << "AirspyInput::applySettings: center freq: " << m_settings.m_centerFrequency << " Hz"
 					<< " device center freq: " << deviceCenterFrequency << " Hz"
@@ -524,15 +594,16 @@ struct airspy_device *AirspyInput::open_airspy_from_sequence(int sequence)
 	struct airspy_device *devinfo;
 	airspy_error rc = AIRSPY_ERROR_OTHER;
 
-	for (int i = 0; i < AIRSPY_MAX_DEVICE; i++)
+	for (int i = 0; i < AirspyPlugin::m_maxDevices; i++)
 	{
 		rc = (airspy_error) airspy_open(&devinfo);
 
 		if (rc == AIRSPY_SUCCESS)
 		{
-			if (i == sequence)
-			{
+			if (i == sequence) {
 				return devinfo;
+			} else {
+			    airspy_close(devinfo);
 			}
 		}
 		else
@@ -543,3 +614,30 @@ struct airspy_device *AirspyInput::open_airspy_from_sequence(int sequence)
 
 	return 0;
 }
+
+int AirspyInput::webapiRunGet(
+        SWGSDRangel::SWGDeviceState& response,
+        QString& errorMessage __attribute__((unused)))
+{
+    m_deviceAPI->getDeviceEngineStateStr(*response.getState());
+    return 200;
+}
+
+int AirspyInput::webapiRun(
+        bool run,
+        SWGSDRangel::SWGDeviceState& response,
+        QString& errorMessage __attribute__((unused)))
+{
+    m_deviceAPI->getDeviceEngineStateStr(*response.getState());
+    MsgStartStop *message = MsgStartStop::create(run);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue) // forward to GUI if any
+    {
+        MsgStartStop *msgToGUI = MsgStartStop::create(run);
+        m_guiMessageQueue->push(msgToGUI);
+    }
+
+    return 200;
+}
+

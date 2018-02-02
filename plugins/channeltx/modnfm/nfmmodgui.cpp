@@ -21,27 +21,26 @@
 #include <QDebug>
 
 #include "device/devicesinkapi.h"
+#include "device/deviceuiset.h"
 #include "plugin/pluginapi.h"
 #include "util/simpleserializer.h"
 #include "util/db.h"
-#include "gui/basicchannelsettingswidget.h"
 #include "dsp/dspengine.h"
 #include "mainwindow.h"
 
 #include "ui_nfmmodgui.h"
 #include "nfmmodgui.h"
 
-const QString NFMModGUI::m_channelID = "sdrangel.channeltx.modnfm";
 
-
-NFMModGUI* NFMModGUI::create(PluginAPI* pluginAPI, DeviceSinkAPI *deviceAPI)
+NFMModGUI* NFMModGUI::create(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSource *channelTx)
 {
-    NFMModGUI* gui = new NFMModGUI(pluginAPI, deviceAPI);
+    NFMModGUI* gui = new NFMModGUI(pluginAPI, deviceUISet, channelTx);
 	return gui;
 }
 
 void NFMModGUI::destroy()
 {
+    delete this;
 }
 
 void NFMModGUI::setName(const QString& name)
@@ -104,14 +103,31 @@ bool NFMModGUI::handleMessage(const Message& message)
         updateWithStreamTime();
         return true;
     }
+    else if (NFMMod::MsgConfigureNFMMod::match(message))
+    {
+        const NFMMod::MsgConfigureNFMMod& cfg = (NFMMod::MsgConfigureNFMMod&) message;
+        m_settings = cfg.getSettings();
+        blockApplySettings(true);
+        displaySettings();
+        blockApplySettings(false);
+        return true;
+    }
+    else if (CWKeyer::MsgConfigureCWKeyer::match(message))
+    {
+        const CWKeyer::MsgConfigureCWKeyer& cfg = (CWKeyer::MsgConfigureCWKeyer&) message;
+        ui->cwKeyerGUI->displaySettings(cfg.getSettings());
+        return true;
+    }
     else
     {
         return false;
     }
 }
 
-void NFMModGUI::channelMarkerChanged()
+void NFMModGUI::channelMarkerChangedByCursor()
 {
+    ui->deltaFrequency->setValue(m_channelMarker.getCenterFrequency());
+    m_settings.m_inputFrequencyOffset = m_channelMarker.getCenterFrequency();
 	applySettings();
 }
 
@@ -187,9 +203,8 @@ void NFMModGUI::on_play_toggled(bool checked)
     ui->tone->setEnabled(!checked); // release other source inputs
     ui->mic->setEnabled(!checked);
     ui->morseKeyer->setEnabled(!checked);
-    m_modAFInput = checked ? NFMMod::NFMModInputFile : NFMMod::NFMModInputNone;
-    NFMMod::MsgConfigureAFInput* message = NFMMod::MsgConfigureAFInput::create(m_modAFInput);
-    m_nfmMod->getInputMessageQueue()->push(message);
+    m_settings.m_modAFInput = checked ? NFMModSettings::NFMModInputFile : NFMModSettings::NFMModInputNone;
+    applySettings();
     ui->navTimeSlider->setEnabled(!checked);
     m_enableNavTime = !checked;
 }
@@ -199,9 +214,8 @@ void NFMModGUI::on_tone_toggled(bool checked)
     ui->play->setEnabled(!checked); // release other source inputs
     ui->mic->setEnabled(!checked);
     ui->morseKeyer->setEnabled(!checked);
-    m_modAFInput = checked ? NFMMod::NFMModInputTone : NFMMod::NFMModInputNone;
-    NFMMod::MsgConfigureAFInput* message = NFMMod::MsgConfigureAFInput::create(m_modAFInput);
-    m_nfmMod->getInputMessageQueue()->push(message);
+    m_settings.m_modAFInput = checked ? NFMModSettings::NFMModInputTone : NFMModSettings::NFMModInputNone;
+    applySettings();
 }
 
 void NFMModGUI::on_morseKeyer_toggled(bool checked)
@@ -209,9 +223,8 @@ void NFMModGUI::on_morseKeyer_toggled(bool checked)
     ui->tone->setEnabled(!checked); // release other source inputs
     ui->mic->setEnabled(!checked);
     ui->play->setEnabled(!checked);
-    m_modAFInput = checked ? NFMMod::NFMModInputCWTone : NFMMod::NFMModInputNone;
-    NFMMod::MsgConfigureAFInput* message = NFMMod::MsgConfigureAFInput::create(m_modAFInput);
-    m_nfmMod->getInputMessageQueue()->push(message);
+    m_settings.m_modAFInput = checked ? NFMModSettings::NFMModInputCWTone : NFMModSettings::NFMModInputNone;
+    applySettings();
 }
 
 void NFMModGUI::on_mic_toggled(bool checked)
@@ -219,9 +232,8 @@ void NFMModGUI::on_mic_toggled(bool checked)
     ui->play->setEnabled(!checked); // release other source inputs
     ui->tone->setEnabled(!checked); // release other source inputs
     ui->morseKeyer->setEnabled(!checked);
-    m_modAFInput = checked ? NFMMod::NFMModInputAudio : NFMMod::NFMModInputNone;
-    NFMMod::MsgConfigureAFInput* message = NFMMod::MsgConfigureAFInput::create(m_modAFInput);
-    m_nfmMod->getInputMessageQueue()->push(message);
+    m_settings.m_modAFInput = checked ? NFMModSettings::NFMModInputAudio : NFMModSettings::NFMModInputNone;
+    applySettings();
 }
 
 void NFMModGUI::on_navTimeSlider_valueChanged(int value)
@@ -275,30 +287,19 @@ void NFMModGUI::onWidgetRolled(QWidget* widget __attribute__((unused)), bool rol
 {
 }
 
-void NFMModGUI::onMenuDoubleClicked()
-{
-	if(!m_basicSettingsShown) {
-		m_basicSettingsShown = true;
-		BasicChannelSettingsWidget* bcsw = new BasicChannelSettingsWidget(&m_channelMarker, this);
-		bcsw->show();
-	}
-}
-
-NFMModGUI::NFMModGUI(PluginAPI* pluginAPI, DeviceSinkAPI *deviceAPI, QWidget* parent) :
+NFMModGUI::NFMModGUI(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSource *channelTx, QWidget* parent) :
 	RollupWidget(parent),
 	ui(new Ui::NFMModGUI),
 	m_pluginAPI(pluginAPI),
-	m_deviceAPI(deviceAPI),
+	m_deviceUISet(deviceUISet),
 	m_channelMarker(this),
-	m_basicSettingsShown(false),
 	m_doApplySettings(true),
 	m_channelPowerDbAvg(20,0),
     m_recordLength(0),
     m_recordSampleRate(48000),
     m_samplesCount(0),
     m_tickCount(0),
-    m_enableNavTime(false),
-    m_modAFInput(NFMMod::NFMModInputNone)
+    m_enableNavTime(false)
 {
 	ui->setupUi(this);
 	setAttribute(Qt::WA_DeleteOnClose, true);
@@ -314,9 +315,8 @@ NFMModGUI::NFMModGUI(PluginAPI* pluginAPI, DeviceSinkAPI *deviceAPI, QWidget* pa
     blockApplySettings(false);
 
 	connect(this, SIGNAL(widgetRolled(QWidget*,bool)), this, SLOT(onWidgetRolled(QWidget*,bool)));
-	connect(this, SIGNAL(menuDoubleClickEvent()), this, SLOT(onMenuDoubleClicked()));
 
-	m_nfmMod = new NFMMod(m_deviceAPI);
+	m_nfmMod = (NFMMod*) channelTx; //new NFMMod(m_deviceUISet->m_deviceSinkAPI);
 	m_nfmMod->setMessageQueueToGUI(getInputMessageQueue());
 
 	connect(&MainWindow::getInstance()->getMasterTimer(), SIGNAL(timeout()), this, SLOT(tick()));
@@ -325,14 +325,21 @@ NFMModGUI::NFMModGUI(PluginAPI* pluginAPI, DeviceSinkAPI *deviceAPI, QWidget* pa
     ui->deltaFrequency->setColorMapper(ColorMapper(ColorMapper::GrayGold));
     ui->deltaFrequency->setValueRange(false, 7, -9999999, 9999999);
 
+    m_channelMarker.blockSignals(true);
+    m_channelMarker.setColor(Qt::red);
+    m_channelMarker.setBandwidth(12500);
+    m_channelMarker.setCenterFrequency(0);
     m_channelMarker.setTitle("NFM Modulator");
-	m_channelMarker.setVisible(true);
+    m_channelMarker.setUDPAddress("127.0.0.1");
+    m_channelMarker.setUDPSendPort(9999);
+    m_channelMarker.blockSignals(false);
+	m_channelMarker.setVisible(true); // activate signal on the last setting only
 
-	connect(&m_channelMarker, SIGNAL(changed()), this, SLOT(channelMarkerChanged()));
+	m_deviceUISet->registerTxChannelInstance(NFMMod::m_channelIdURI, this);
+	m_deviceUISet->addChannelMarker(&m_channelMarker);
+	m_deviceUISet->addRollupWidget(this);
 
-	m_deviceAPI->registerChannelInstance(m_channelID, this);
-    m_deviceAPI->addChannelMarker(&m_channelMarker);
-    m_deviceAPI->addRollupWidget(this);
+	connect(&m_channelMarker, SIGNAL(changedByCursor()), this, SLOT(channelMarkerChangedByCursor()));
 
     ui->play->setEnabled(false);
     ui->play->setChecked(false);
@@ -358,8 +365,8 @@ NFMModGUI::NFMModGUI(PluginAPI* pluginAPI, DeviceSinkAPI *deviceAPI, QWidget* pa
 
 NFMModGUI::~NFMModGUI()
 {
-    m_deviceAPI->removeChannelInstance(this);
-	delete m_nfmMod;
+    m_deviceUISet->removeTxChannelInstance(this);
+	delete m_nfmMod; // TODO: check this: when the GUI closes it has to delete the modulator
 	delete ui;
 }
 
@@ -372,13 +379,9 @@ void NFMModGUI::applySettings(bool force)
 {
 	if (m_doApplySettings)
 	{
-		setTitleColor(m_channelMarker.getColor());
-
 		NFMMod::MsgConfigureChannelizer *msgChan = NFMMod::MsgConfigureChannelizer::create(
 		        48000, m_channelMarker.getCenterFrequency());
 		m_nfmMod->getInputMessageQueue()->push(msgChan);
-
-		ui->deltaFrequency->setValue(m_channelMarker.getCenterFrequency());
 
 		NFMMod::MsgConfigureNFMMod *msg = NFMMod::MsgConfigureNFMMod::create(m_settings, force);
 		m_nfmMod->getInputMessageQueue()->push(msg);
@@ -390,13 +393,15 @@ void NFMModGUI::displaySettings()
     m_channelMarker.blockSignals(true);
     m_channelMarker.setCenterFrequency(m_settings.m_inputFrequencyOffset);
     m_channelMarker.setBandwidth(m_settings.m_rfBandwidth);
-    m_channelMarker.setColor(m_settings.m_rgbColor);
-    setTitleColor(m_settings.m_rgbColor);
     m_channelMarker.blockSignals(false);
+    m_channelMarker.setColor(m_settings.m_rgbColor); // activate signal on the last setting only
 
+    setTitleColor(m_settings.m_rgbColor);
     setWindowTitle(m_channelMarker.getTitle());
 
     blockApplySettings(true);
+
+    ui->deltaFrequency->setValue(m_channelMarker.getCenterFrequency());
 
     ui->rfBW->setCurrentIndex(NFMModSettings::getRFBWIndex(m_settings.m_rfBandwidth));
 
@@ -418,22 +423,28 @@ void NFMModGUI::displaySettings()
     ui->channelMute->setChecked(m_settings.m_channelMute);
     ui->playLoop->setChecked(m_settings.m_playLoop);
 
+    ui->tone->setEnabled((m_settings.m_modAFInput == NFMModSettings::NFMModInputAF::NFMModInputTone) || (m_settings.m_modAFInput == NFMModSettings::NFMModInputAF::NFMModInputNone));
+    ui->mic->setEnabled((m_settings.m_modAFInput == NFMModSettings::NFMModInputAF::NFMModInputAudio) || (m_settings.m_modAFInput == NFMModSettings::NFMModInputAF::NFMModInputNone));
+    ui->play->setEnabled((m_settings.m_modAFInput == NFMModSettings::NFMModInputAF::NFMModInputFile) || (m_settings.m_modAFInput == NFMModSettings::NFMModInputAF::NFMModInputNone));
+    ui->morseKeyer->setEnabled((m_settings.m_modAFInput == NFMModSettings::NFMModInputAF::NFMModInputCWTone) || (m_settings.m_modAFInput == NFMModSettings::NFMModInputAF::NFMModInputNone));
+
+    ui->tone->setChecked(m_settings.m_modAFInput == NFMModSettings::NFMModInputAF::NFMModInputTone);
+    ui->mic->setChecked(m_settings.m_modAFInput == NFMModSettings::NFMModInputAF::NFMModInputAudio);
+    ui->play->setChecked(m_settings.m_modAFInput == NFMModSettings::NFMModInputAF::NFMModInputFile);
+    ui->morseKeyer->setChecked(m_settings.m_modAFInput == NFMModSettings::NFMModInputAF::NFMModInputCWTone);
+
     blockApplySettings(false);
 }
 
 
 void NFMModGUI::leaveEvent(QEvent*)
 {
-	blockApplySettings(true);
 	m_channelMarker.setHighlighted(false);
-	blockApplySettings(false);
 }
 
 void NFMModGUI::enterEvent(QEvent*)
 {
-	blockApplySettings(true);
 	m_channelMarker.setHighlighted(true);
-	blockApplySettings(false);
 }
 
 void NFMModGUI::tick()
@@ -442,7 +453,7 @@ void NFMModGUI::tick()
 	m_channelPowerDbAvg.feed(powDb);
 	ui->channelPower->setText(tr("%1 dB").arg(m_channelPowerDbAvg.average(), 0, 'f', 1));
 
-    if (((++m_tickCount & 0xf) == 0) && (m_modAFInput == NFMMod::NFMModInputFile))
+    if (((++m_tickCount & 0xf) == 0) && (m_settings.m_modAFInput == NFMModSettings::NFMModInputFile))
     {
         NFMMod::MsgConfigureFileSourceStreamTiming* message = NFMMod::MsgConfigureFileSourceStreamTiming::create();
         m_nfmMod->getInputMessageQueue()->push(message);

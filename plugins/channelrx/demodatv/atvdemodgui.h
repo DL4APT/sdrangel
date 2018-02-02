@@ -25,10 +25,8 @@
 #include "util/messagequeue.h"
 
 class PluginAPI;
-class DeviceSourceAPI;
-
-class ThreadedBasebandSampleSink;
-class DownChannelizer;
+class DeviceUISet;
+class BasebandSampleSink;
 class ATVDemod;
 class ScopeVisNG;
 
@@ -42,7 +40,7 @@ class ATVDemodGUI : public RollupWidget, public PluginInstanceGUI
 	Q_OBJECT
 
 public:
-    static ATVDemodGUI* create(PluginAPI* objPluginAPI, DeviceSourceAPI *objDeviceAPI);
+    static ATVDemodGUI* create(PluginAPI* objPluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel);
 	virtual void destroy();
 
     void setName(const QString& strName);
@@ -56,14 +54,50 @@ public:
     virtual MessageQueue *getInputMessageQueue() { return &m_inputMessageQueue; }
     virtual bool handleMessage(const Message& objMessage);
 
-    static const QString m_strChannelID;
+public slots:
+	void channelMarkerChangedByCursor();
+    void channelMarkerHighlightedByCursor();
+
+private:
+	Ui::ATVDemodGUI* ui;
+    PluginAPI* m_pluginAPI;
+    DeviceUISet* m_deviceUISet;
+    ChannelMarker m_channelMarker;
+    ATVDemod* m_atvDemod;
+
+    bool m_blnDoApplySettings;
+
+    MovingAverage<double> m_objMagSqAverage;
+    int m_intTickCount;
+
+    ScopeVisNG* m_scopeVis;
+
+    float m_fltLineTimeMultiplier;
+    float m_fltTopTimeMultiplier;
+    int m_rfSliderDivisor;
+    int m_inputSampleRate;
+    MessageQueue m_inputMessageQueue;
+
+    explicit ATVDemodGUI(PluginAPI* objPluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel, QWidget* objParent = 0);
+	virtual ~ATVDemodGUI();
+
+    void blockApplySettings(bool blnBlock);
+	void applySettings();
+    void applyRFSettings();
+    void setChannelMarkerBandwidth();
+    void setRFFiltersSlidersRange(int sampleRate);
+    void lineTimeUpdate();
+    void topTimeUpdate();
+    static float getFps(int fpsIndex);
+    static float getNominalLineTime(int nbLinesIndex, int fpsIndex);
+    static int getNumberOfLines(int nbLinesIndex);
+
+	void leaveEvent(QEvent*);
+	void enterEvent(QEvent*);
 
 private slots:
-	void viewChanged();
-    void channelSampleRateChanged();
     void handleSourceMessages();
     void onWidgetRolled(QWidget* widget, bool rollDown);
-    void onMenuDoubleClicked();
     void tick();
     void on_synchLevel_valueChanged(int value);
     void on_blackLevel_valueChanged(int value);
@@ -86,45 +120,6 @@ private slots:
     void on_bfo_valueChanged(int value);
     void on_fmDeviation_valueChanged(int value);
     void on_screenTabWidget_currentChanged(int index);
-
-private:
-	Ui::ATVDemodGUI* ui;
-    PluginAPI* m_pluginAPI;
-    DeviceSourceAPI* m_deviceAPI;
-    ChannelMarker m_channelMarker;
-    ThreadedBasebandSampleSink* m_threadedChannelizer;
-    DownChannelizer* m_channelizer;
-    ATVDemod* m_atvDemod;
-
-    bool m_blnBasicSettingsShown;
-    bool m_blnDoApplySettings;
-
-    MovingAverage<double> m_objMagSqAverage;
-    int m_intTickCount;
-
-    ScopeVisNG* m_scopeVis;
-
-    float m_fltLineTimeMultiplier;
-    float m_fltTopTimeMultiplier;
-    int m_rfSliderDivisor;
-    MessageQueue m_inputMessageQueue;
-
-    explicit ATVDemodGUI(PluginAPI* objPluginAPI, DeviceSourceAPI *objDeviceAPI, QWidget* objParent = NULL);
-	virtual ~ATVDemodGUI();
-
-    void blockApplySettings(bool blnBlock);
-	void applySettings();
-    void applyRFSettings();
-    void setChannelMarkerBandwidth();
-    void setRFFiltersSlidersRange(int sampleRate);
-    void lineTimeUpdate();
-    void topTimeUpdate();
-    static float getFps(int fpsIndex);
-    static float getNominalLineTime(int nbLinesIndex, int fpsIndex);
-    static int getNumberOfLines(int nbLinesIndex);
-
-	void leaveEvent(QEvent*);
-	void enterEvent(QEvent*);
 };
 
 #endif // INCLUDE_ATVDEMODGUI_H

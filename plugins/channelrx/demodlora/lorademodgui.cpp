@@ -1,5 +1,6 @@
 
 #include <device/devicesourceapi.h>
+#include "device/deviceuiset.h"
 #include <dsp/downchannelizer.h>
 #include <QDockWidget>
 #include <QMainWindow>
@@ -9,17 +10,14 @@
 #include "gui/glspectrum.h"
 #include "plugin/pluginapi.h"
 #include "util/simpleserializer.h"
-#include "gui/basicchannelsettingswidget.h"
 #include "dsp/dspengine.h"
 
 #include "lorademod.h"
 #include "lorademodgui.h"
 
-const QString LoRaDemodGUI::m_channelID = "de.maintech.sdrangelove.channel.lora";
-
-LoRaDemodGUI* LoRaDemodGUI::create(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI)
+LoRaDemodGUI* LoRaDemodGUI::create(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel)
 {
-	LoRaDemodGUI* gui = new LoRaDemodGUI(pluginAPI, deviceAPI);
+	LoRaDemodGUI* gui = new LoRaDemodGUI(pluginAPI, deviceUISet, rxChannel);
 	return gui;
 }
 
@@ -105,37 +103,22 @@ void LoRaDemodGUI::on_Spread_valueChanged(int value __attribute__((unused)))
 
 void LoRaDemodGUI::onWidgetRolled(QWidget* widget __attribute__((unused)), bool rollDown __attribute__((unused)))
 {
-	/*
-	if((widget == ui->spectrumContainer) && (m_LoRaDemod != NULL))
-		m_LoRaDemod->setSpectrum(m_threadedSampleSink->getMessageQueue(), rollDown);
-	*/
 }
 
-void LoRaDemodGUI::onMenuDoubleClicked()
-{
-	if(!m_basicSettingsShown) {
-		m_basicSettingsShown = true;
-		BasicChannelSettingsWidget* bcsw = new BasicChannelSettingsWidget(&m_channelMarker, this);
-		bcsw->show();
-	}
-}
-
-LoRaDemodGUI::LoRaDemodGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidget* parent) :
+LoRaDemodGUI::LoRaDemodGUI(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel, QWidget* parent) :
 	RollupWidget(parent),
 	ui(new Ui::LoRaDemodGUI),
 	m_pluginAPI(pluginAPI),
-	m_deviceAPI(deviceAPI),
+	m_deviceUISet(deviceUISet),
 	m_channelMarker(this),
-	m_basicSettingsShown(false),
 	m_doApplySettings(true)
 {
 	ui->setupUi(this);
 	setAttribute(Qt::WA_DeleteOnClose, true);
 	connect(this, SIGNAL(widgetRolled(QWidget*,bool)), this, SLOT(onWidgetRolled(QWidget*,bool)));
-	connect(this, SIGNAL(menuDoubleClickEvent()), this, SLOT(onMenuDoubleClicked()));
 
-	m_spectrumVis = new SpectrumVis(ui->glSpectrum);
-	m_LoRaDemod = new LoRaDemod(m_deviceAPI);
+	m_spectrumVis = new SpectrumVis(SDR_RX_SCALEF, ui->glSpectrum);
+	m_LoRaDemod = (LoRaDemod*) rxChannel; //new LoRaDemod(m_deviceUISet->m_deviceSourceAPI);
 	m_LoRaDemod->setSpectrumSink(m_spectrumVis);
 
 	ui->glSpectrum->setCenterFrequency(16000);
@@ -143,18 +126,14 @@ LoRaDemodGUI::LoRaDemodGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWi
 	ui->glSpectrum->setDisplayWaterfall(true);
 	ui->glSpectrum->setDisplayMaxHold(true);
 
-//	setTitleColor(Qt::magenta);
-//
-//	m_channelMarker.setColor(Qt::magenta);
-//	m_channelMarker.setBandwidth(LoRaDemodSettings::bandwidths[0]);
-//	m_channelMarker.setCenterFrequency(0);
+	m_channelMarker.setMovable(false);
 	m_channelMarker.setVisible(true);
 
-	connect(&m_channelMarker, SIGNAL(changed()), this, SLOT(viewChanged()));
+	connect(&m_channelMarker, SIGNAL(changedByCursor()), this, SLOT(viewChanged()));
 
-	m_deviceAPI->registerChannelInstance(m_channelID, this);
-	m_deviceAPI->addChannelMarker(&m_channelMarker);
-	m_deviceAPI->addRollupWidget(this);
+	m_deviceUISet->registerRxChannelInstance(LoRaDemod::m_channelIdURI, this);
+	m_deviceUISet->addChannelMarker(&m_channelMarker);
+	m_deviceUISet->addRollupWidget(this);
 
 	ui->spectrumGUI->setBuddies(m_spectrumVis->getInputMessageQueue(), m_spectrumVis, ui->glSpectrum);
 
@@ -167,8 +146,8 @@ LoRaDemodGUI::LoRaDemodGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWi
 
 LoRaDemodGUI::~LoRaDemodGUI()
 {
-    m_deviceAPI->removeChannelInstance(this);
-	delete m_LoRaDemod;
+    m_deviceUISet->removeRxChannelInstance(this);
+	delete m_LoRaDemod; // TODO: check this: when the GUI closes it has to delete the demodulator
 	delete m_spectrumVis;
 	delete ui;
 }

@@ -21,7 +21,8 @@
 #include <QObject>
 #include "plugin/plugininterface.h"
 
-class DeviceSourceAPI;
+class DeviceUISet;
+class BasebandSampleSink;
 
 class ATVDemodPlugin : public QObject, PluginInterface
 {
@@ -35,15 +36,14 @@ public:
 	const PluginDescriptor& getPluginDescriptor() const;
     void initPlugin(PluginAPI* ptrPluginAPI);
 
-    PluginInstanceGUI* createRxChannel(const QString& strChannelName, DeviceSourceAPI *ptrDeviceAPI);
+    virtual PluginInstanceGUI* createRxChannelGUI(DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel);
+    virtual BasebandSampleSink* createRxChannelBS(DeviceSourceAPI *deviceAPI);
+    virtual ChannelSinkAPI* createRxChannelCS(DeviceSourceAPI *deviceAPI);
 
 private:
     static const PluginDescriptor m_ptrPluginDescriptor;
 
     PluginAPI* m_ptrPluginAPI;
-
-private slots:
-    void createInstanceDemodATV(DeviceSourceAPI *ptrDeviceAPI);
 };
 
 #endif // INCLUDE_ATVPLUGIN_H

@@ -26,13 +26,12 @@
 #include "bfmdemodsettings.h"
 
 class PluginAPI;
-class DeviceSourceAPI;
+class DeviceUISet;
 class RDSParser;
 
-class ThreadedBasebandSampleSink;
-class DownChannelizer;
 class SpectrumVis;
 class BFMDemod;
+class BasebandSampleSink;
 
 namespace Ui {
 	class BFMDemodGUI;
@@ -42,7 +41,7 @@ class BFMDemodGUI : public RollupWidget, public PluginInstanceGUI {
 	Q_OBJECT
 
 public:
-	static BFMDemodGUI* create(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI);
+	static BFMDemodGUI* create(PluginAPI* pluginAPI, DeviceUISet *deviceAPI, BasebandSampleSink *rxChannel);
 	virtual void destroy();
 
 	void setName(const QString& name);
@@ -56,7 +55,50 @@ public:
 	virtual MessageQueue *getInputMessageQueue() { return &m_inputMessageQueue; }
 	virtual bool handleMessage(const Message& message);
 
-	static const QString m_channelID;
+public slots:
+    void channelMarkerChangedByCursor();
+    void channelMarkerHighlightedByCursor();
+
+private:
+	Ui::BFMDemodGUI* ui;
+	PluginAPI* m_pluginAPI;
+	DeviceUISet* m_deviceUISet;
+	ChannelMarker m_channelMarker;
+	BFMDemodSettings m_settings;
+	bool m_doApplySettings;
+	int m_rdsTimerCount;
+
+	SpectrumVis* m_spectrumVis;
+
+	BFMDemod* m_bfmDemod;
+	MovingAverage<double> m_channelPowerDbAvg;
+	int m_rate;
+	std::vector<unsigned int> m_g14ComboIndex;
+	MessageQueue m_inputMessageQueue;
+
+	explicit BFMDemodGUI(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel, QWidget* parent = 0);
+	virtual ~BFMDemodGUI();
+
+    void blockApplySettings(bool block);
+	void applySettings(bool force = false);
+    void displaySettings();
+	void displayUDPAddress();
+	void rdsUpdate(bool force);
+	void rdsUpdateFixedFields();
+
+	void leaveEvent(QEvent*);
+	void enterEvent(QEvent*);
+
+	void changeFrequency(qint64 f);
+
+    static int requiredBW(int rfBW)
+    {
+        if (rfBW <= 48000) {
+            return 48000;
+        } else {
+            return (3*rfBW)/2;
+        }
+    }
 
 private slots:
 	void on_deltaFrequency_changed(qint64 value);
@@ -78,48 +120,6 @@ private slots:
     void onMenuDialogCalled(const QPoint& p);
     void handleInputMessages();
 	void tick();
-
-private:
-	Ui::BFMDemodGUI* ui;
-	PluginAPI* m_pluginAPI;
-	DeviceSourceAPI* m_deviceAPI;
-	ChannelMarker m_channelMarker;
-	BFMDemodSettings m_settings;
-	bool m_doApplySettings;
-	int m_rdsTimerCount;
-
-	SpectrumVis* m_spectrumVis;
-
-	BFMDemod* m_bfmDemod;
-	MovingAverage<double> m_channelPowerDbAvg;
-	int m_rate;
-	std::vector<unsigned int> m_g14ComboIndex;
-	MessageQueue m_inputMessageQueue;
-
-	explicit BFMDemodGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidget* parent = NULL);
-	virtual ~BFMDemodGUI();
-
-    void blockApplySettings(bool block);
-	void applySettings(bool force = false);
-    void displaySettings();
-	void displayUDPAddress();
-	void rdsUpdate(bool force);
-	void rdsUpdateFixedFields();
-	void channelMarkerUpdate();
-
-	void leaveEvent(QEvent*);
-	void enterEvent(QEvent*);
-
-	void changeFrequency(qint64 f);
-
-    static int requiredBW(int rfBW)
-    {
-        if (rfBW <= 48000) {
-            return 48000;
-        } else {
-            return (3*rfBW)/2;
-        }
-    }
 };
 
 #endif // INCLUDE_BFMDEMODGUI_H

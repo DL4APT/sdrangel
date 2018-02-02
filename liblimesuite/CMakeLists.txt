@@ -7,6 +7,8 @@ set(limesuite_SOURCES
     ${LIBLIMESUITESRC}/src/ADF4002/ADF4002.cpp 
     ${LIBLIMESUITESRC}/src/API/lms7_api.cpp
     ${LIBLIMESUITESRC}/src/API/lms7_device.cpp
+    ${LIBLIMESUITESRC}/src/API/LimeSDR_mini.cpp
+    ${LIBLIMESUITESRC}/src/API/qLimeSDR.cpp
     src/BuiltinConnections.cpp
     ${LIBLIMESUITESRC}/src/ConnectionRegistry/ConnectionHandle.cpp
     ${LIBLIMESUITESRC}/src/ConnectionRegistry/ConnectionRegistry.cpp
@@ -52,12 +54,14 @@ set(limesuite_SOURCES
 set(limesuite_HEADERS
     ${LIBLIMESUITESRC}/src/ADF4002/ADF4002.h 
     ${LIBLIMESUITESRC}/src/API/lms7_device.h
+    ${LIBLIMESUITESRC}/src/API/LimeSDR_mini.h    
+    ${LIBLIMESUITESRC}/src/API/qLimeSDR.h
     ${LIBLIMESUITESRC}/src/ConnectionRegistry/ConnectionHandle.h
     ${LIBLIMESUITESRC}/src/ConnectionRegistry/ConnectionRegistry.h
     ${LIBLIMESUITESRC}/src/ConnectionRegistry/IConnection.h
     ${LIBLIMESUITESRC}/src/ConnectionSTREAM/ConnectionSTREAM.h
     ${LIBLIMESUITESRC}/src/Connection_uLimeSDR/Connection_uLimeSDR.h
-    ${LIBLIMESUITESRC}/src/Connection_uLimeSDR/DRV_DriverInterface.h
+#    ${LIBLIMESUITESRC}/src/Connection_uLimeSDR/DRV_DriverInterface.h
     ${LIBLIMESUITESRC}/src/Connection_uLimeSDR/FTD3XXLibrary/FTD3XX.h
     ${LIBLIMESUITESRC}/src/ConnectionXillybus/ConnectionXillybus.h
     ${LIBLIMESUITESRC}/src/FPGA_common/FPGA_common.h

@@ -18,10 +18,12 @@
 #ifndef INCLUDE_DSDDEMOD_H
 #define INCLUDE_DSDDEMOD_H
 
-#include <dsp/basebandsamplesink.h>
-#include <dsp/phasediscri.h>
 #include <QMutex>
 #include <vector>
+
+#include "dsp/basebandsamplesink.h"
+#include "channel/channelsinkapi.h"
+#include "dsp/phasediscri.h"
 #include "dsp/nco.h"
 #include "dsp/interpolator.h"
 #include "dsp/lowpass.h"
@@ -40,7 +42,7 @@ class DeviceSourceAPI;
 class ThreadedBasebandSampleSink;
 class DownChannelizer;
 
-class DSDDemod : public BasebandSampleSink {
+class DSDDemod : public BasebandSampleSink, public ChannelSinkAPI {
 public:
     class MsgConfigureDSDDemod : public Message {
         MESSAGE_CLASS_DECLARATION
@@ -90,6 +92,7 @@ public:
 
     DSDDemod(DeviceSourceAPI *deviceAPI);
 	~DSDDemod();
+	virtual void destroy() { delete this; }
 	void setScopeSink(BasebandSampleSink* sampleSink) { m_scope = sampleSink; }
 
 	void configureMyPosition(MessageQueue* messageQueue, float myLatitude, float myLongitude);
@@ -98,6 +101,13 @@ public:
 	virtual void start();
 	virtual void stop();
 	virtual bool handleMessage(const Message& cmd);
+
+    virtual void getIdentifier(QString& id) { id = objectName(); }
+    virtual void getTitle(QString& title) { title = m_settings.m_title; }
+    virtual qint64 getCenterFrequency() const { return m_settings.m_inputFrequencyOffset; }
+
+    virtual QByteArray serialize() const;
+    virtual bool deserialize(const QByteArray& data);
 
 	double getMagSq() { return m_magsq; }
 	bool getSquelchOpen() const { return m_squelchOpen; }
@@ -115,6 +125,8 @@ public:
         m_magsqCount = 0;
     }
 
+    static const QString m_channelIdURI;
+    static const QString m_channelId;
 
 private:
 	class MsgConfigureMyPosition : public Message {
@@ -144,11 +156,13 @@ private:
 		RSRunning
 	};
 
-	DSDDemodSettings m_settings;
-
 	DeviceSourceAPI *m_deviceAPI;
     ThreadedBasebandSampleSink* m_threadedChannelizer;
     DownChannelizer* m_channelizer;
+
+    int m_inputSampleRate;
+	int m_inputFrequencyOffset;
+	DSDDemodSettings m_settings;
 
 	NCO m_nco;
 	Interpolator m_interpolator;
@@ -172,8 +186,9 @@ private:
 	SampleVector m_scopeSampleBuffer;
 	AudioVector m_audioBuffer;
 	uint m_audioBufferFill;
-	qint16 *m_sampleBuffer; //!< samples ring buffer
+	FixReal *m_sampleBuffer; //!< samples ring buffer
 	int m_sampleBufferIndex;
+	int m_scaleFromShort;
 
 	AudioFifo m_audioFifo1;
     AudioFifo m_audioFifo2;
@@ -188,7 +203,8 @@ private:
 
     static const int m_udpBlockSize;
 
-	void applySettings(DSDDemodSettings& settings, bool force = false);
+    void applyChannelSettings(int inputSampleRate, int inputFrequencyOffset, bool force = false);
+	void applySettings(const DSDDemodSettings& settings, bool force = false);
 };
 
 #endif // INCLUDE_DSDDEMOD_H

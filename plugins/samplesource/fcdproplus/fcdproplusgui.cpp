@@ -25,19 +25,20 @@
 #include "fcdproplusgui.h"
 
 #include <device/devicesourceapi.h>
+#include "device/deviceuiset.h"
 #include "fcdproplusconst.h"
 #include "fcdtraits.h"
 
-FCDProPlusGui::FCDProPlusGui(DeviceSourceAPI *deviceAPI, QWidget* parent) :
+FCDProPlusGui::FCDProPlusGui(DeviceUISet *deviceUISet, QWidget* parent) :
 	QWidget(parent),
 	ui(new Ui::FCDProPlusGui),
-	m_deviceAPI(deviceAPI),
+	m_deviceUISet(deviceUISet),
 	m_forceSettings(true),
 	m_settings(),
 	m_sampleSource(NULL),
 	m_lastEngineState((DSPDeviceSourceEngine::State)-1)
 {
-    m_sampleSource = (FCDProPlusInput*) m_deviceAPI->getSampleSource();
+    m_sampleSource = (FCDProPlusInput*) m_deviceUISet->m_deviceSourceAPI->getSampleSource();
 
 	ui->setupUi(this);
 
@@ -127,7 +128,28 @@ bool FCDProPlusGui::deserialize(const QByteArray& data)
 
 bool FCDProPlusGui::handleMessage(const Message& message __attribute__((unused)))
 {
-	return false;
+    if (FCDProPlusInput::MsgConfigureFCD::match(message))
+    {
+        const FCDProPlusInput::MsgConfigureFCD& cfg = (FCDProPlusInput::MsgConfigureFCD&) message;
+        m_settings = cfg.getSettings();
+        blockApplySettings(true);
+        displaySettings();
+        blockApplySettings(false);
+        return true;
+    }
+    else if (FCDProPlusInput::MsgStartStop::match(message))
+    {
+        FCDProPlusInput::MsgStartStop& notif = (FCDProPlusInput::MsgStartStop&) message;
+        blockApplySettings(true);
+        ui->startStop->setChecked(notif.getStartStop());
+        blockApplySettings(false);
+
+        return true;
+    }
+    else
+    {
+        return false;
+    }
 }
 
 void FCDProPlusGui::handleInputMessages()
@@ -153,8 +175,8 @@ void FCDProPlusGui::handleInputMessages()
 
 void FCDProPlusGui::updateSampleRateAndFrequency()
 {
-    m_deviceAPI->getSpectrum()->setSampleRate(m_sampleRate);
-    m_deviceAPI->getSpectrum()->setCenterFrequency(m_deviceCenterFrequency);
+    m_deviceUISet->getSpectrum()->setSampleRate(m_sampleRate);
+    m_deviceUISet->getSpectrum()->setCenterFrequency(m_deviceCenterFrequency);
     ui->deviceRateText->setText(tr("%1k").arg((float)m_sampleRate / 1000));
 }
 
@@ -226,7 +248,7 @@ void FCDProPlusGui::updateHardware()
 
 void FCDProPlusGui::updateStatus()
 {
-    int state = m_deviceAPI->state();
+    int state = m_deviceUISet->m_deviceSourceAPI->state();
 
     if(m_lastEngineState != state)
     {
@@ -243,7 +265,7 @@ void FCDProPlusGui::updateStatus()
                 break;
             case DSPDeviceSourceEngine::StError:
                 ui->startStop->setStyleSheet("QToolButton { background-color : red; }");
-                QMessageBox::information(this, tr("Message"), m_deviceAPI->errorMessage());
+                QMessageBox::information(this, tr("Message"), m_deviceUISet->m_deviceSourceAPI->errorMessage());
                 break;
             default:
                 break;
@@ -299,18 +321,10 @@ void FCDProPlusGui::on_ppm_valueChanged(int value)
 
 void FCDProPlusGui::on_startStop_toggled(bool checked)
 {
-    if (checked)
+    if (m_doApplySettings)
     {
-        if (m_deviceAPI->initAcquisition())
-        {
-            m_deviceAPI->startAcquisition();
-            DSPEngine::instance()->startAudioOutput();
-        }
-    }
-    else
-    {
-        m_deviceAPI->stopAcquisition();
-        DSPEngine::instance()->stopAudioOutput();
+        FCDProPlusInput::MsgStartStop *message = FCDProPlusInput::MsgStartStop::create(checked);
+        m_sampleSource->getInputMessageQueue()->push(message);
     }
 }
 

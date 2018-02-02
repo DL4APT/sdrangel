@@ -18,9 +18,11 @@
 #ifndef INCLUDE_WFMDEMOD_H
 #define INCLUDE_WFMDEMOD_H
 
-#include <dsp/basebandsamplesink.h>
 #include <QMutex>
 #include <vector>
+
+#include "dsp/basebandsamplesink.h"
+#include "channel/channelsinkapi.h"
 #include "dsp/nco.h"
 #include "dsp/interpolator.h"
 #include "dsp/lowpass.h"
@@ -38,7 +40,7 @@ class ThreadedBasebandSampleSink;
 class DownChannelizer;
 class DeviceSourceAPI;
 
-class WFMDemod : public BasebandSampleSink {
+class WFMDemod : public BasebandSampleSink, public ChannelSinkAPI {
 public:
     class MsgConfigureWFMDemod : public Message {
         MESSAGE_CLASS_DECLARATION
@@ -88,12 +90,20 @@ public:
 
 	WFMDemod(DeviceSourceAPI *deviceAPI);
 	virtual ~WFMDemod();
+	virtual void destroy() { delete this; }
 	void setSampleSink(BasebandSampleSink* sampleSink) { m_sampleSink = sampleSink; }
 
 	virtual void feed(const SampleVector::const_iterator& begin, const SampleVector::const_iterator& end, bool po);
 	virtual void start();
 	virtual void stop();
 	virtual bool handleMessage(const Message& cmd);
+
+    virtual void getIdentifier(QString& id) { id = objectName(); }
+    virtual void getTitle(QString& title) { title = m_settings.m_title; }
+    virtual qint64 getCenterFrequency() const { return m_settings.m_inputFrequencyOffset; }
+
+    virtual QByteArray serialize() const;
+    virtual bool deserialize(const QByteArray& data);
 
 	double getMagSq() const { return m_movingAverage.average(); }
     bool getSquelchOpen() const { return m_squelchOpen; }
@@ -109,6 +119,9 @@ public:
         m_magsqCount = 0;
     }
 
+    static const QString m_channelIdURI;
+    static const QString m_channelId;
+
 private:
 	enum RateState {
 		RSInitialFill,
@@ -118,6 +131,9 @@ private:
     DeviceSourceAPI* m_deviceAPI;
     ThreadedBasebandSampleSink* m_threadedChannelizer;
     DownChannelizer* m_channelizer;
+
+    int m_inputSampleRate;
+    int m_inputFrequencyOffset;
     WFMDemodSettings m_settings;
 
 	NCO m_nco;
@@ -140,6 +156,7 @@ private:
 
 	AudioVector m_audioBuffer;
 	uint m_audioBufferFill;
+    UDPSink<qint16> *m_udpBufferAudio;
 
 	BasebandSampleSink* m_sampleSink;
 	AudioFifo m_audioFifo;
@@ -148,7 +165,10 @@ private:
 
 	PhaseDiscriminators m_phaseDiscri;
 
-	void applySettings(const WFMDemodSettings& settings, bool force = false);
+    static const int m_udpBlockSize;
+
+    void applyChannelSettings(int inputSampleRate, int inputFrequencyOffset, bool force = false);
+    void applySettings(const WFMDemodSettings& settings, bool force = false);
 };
 
 #endif // INCLUDE_WFMDEMOD_H

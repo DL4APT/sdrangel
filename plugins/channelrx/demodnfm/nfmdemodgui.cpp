@@ -1,6 +1,7 @@
 #include "nfmdemodgui.h"
 
 #include <device/devicesourceapi.h>
+#include "device/deviceuiset.h"
 #include <QDockWidget>
 #include <QMainWindow>
 #include <QDebug>
@@ -15,11 +16,9 @@
 #include "mainwindow.h"
 #include "nfmdemod.h"
 
-const QString NFMDemodGUI::m_channelID = "de.maintech.sdrangelove.channel.nfm";
-
-NFMDemodGUI* NFMDemodGUI::create(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI)
+NFMDemodGUI* NFMDemodGUI::create(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel)
 {
-	NFMDemodGUI* gui = new NFMDemodGUI(pluginAPI, deviceAPI);
+	NFMDemodGUI* gui = new NFMDemodGUI(pluginAPI, deviceUISet, rxChannel);
 	return gui;
 }
 
@@ -73,13 +72,24 @@ bool NFMDemodGUI::deserialize(const QByteArray& data)
     }
 }
 
-bool NFMDemodGUI::handleMessage(const Message& message __attribute__((unused)))
+bool NFMDemodGUI::handleMessage(const Message& message)
 {
     if (NFMDemod::MsgReportCTCSSFreq::match(message))
     {
+        qDebug("NFMDemodGUI::handleMessage: NFMDemod::MsgReportCTCSSFreq");
         NFMDemod::MsgReportCTCSSFreq& report = (NFMDemod::MsgReportCTCSSFreq&) message;
         setCtcssFreq(report.getFrequency());
         //qDebug("NFMDemodGUI::handleMessage: MsgReportCTCSSFreq: %f", report.getFrequency());
+        return true;
+    }
+    else if (NFMDemod::MsgConfigureNFMDemod::match(message))
+    {
+        qDebug("NFMDemodGUI::handleMessage: NFMDemod::MsgConfigureNFMDemod");
+        const NFMDemod::MsgConfigureNFMDemod& cfg = (NFMDemod::MsgConfigureNFMDemod&) message;
+        m_settings = cfg.getSettings();
+        blockApplySettings(true);
+        displaySettings();
+        blockApplySettings(false);
         return true;
     }
 
@@ -99,15 +109,16 @@ void NFMDemodGUI::handleInputMessages()
     }
 }
 
-void NFMDemodGUI::channelMarkerChanged()
+void NFMDemodGUI::channelMarkerChangedByCursor()
 {
-    setWindowTitle(m_channelMarker.getTitle());
+    ui->deltaFrequency->setValue(m_channelMarker.getCenterFrequency());
     m_settings.m_inputFrequencyOffset = m_channelMarker.getCenterFrequency();
-    m_settings.m_udpAddress = m_channelMarker.getUDPAddress(),
-    m_settings.m_udpPort =  m_channelMarker.getUDPSendPort(),
-    m_settings.m_rgbColor = m_channelMarker.getColor().rgb();
-    displayUDPAddress();
     applySettings();
+}
+
+void NFMDemodGUI::channelMarkerHighlightedByCursor()
+{
+    setHighlighted(m_channelMarker.getHighlighted());
 }
 
 void NFMDemodGUI::on_deltaFrequency_changed(qint64 value)
@@ -219,13 +230,25 @@ void NFMDemodGUI::onMenuDialogCalled(const QPoint &p)
     BasicChannelSettingsDialog dialog(&m_channelMarker, this);
     dialog.move(p);
     dialog.exec();
+
+    m_settings.m_inputFrequencyOffset = m_channelMarker.getCenterFrequency();
+    m_settings.m_udpAddress = m_channelMarker.getUDPAddress(),
+    m_settings.m_udpPort =  m_channelMarker.getUDPSendPort(),
+    m_settings.m_rgbColor = m_channelMarker.getColor().rgb();
+    m_settings.m_title = m_channelMarker.getTitle();
+
+    setWindowTitle(m_settings.m_title);
+    setTitleColor(m_settings.m_rgbColor);
+    displayUDPAddress();
+
+    applySettings();
 }
 
-NFMDemodGUI::NFMDemodGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidget* parent) :
+NFMDemodGUI::NFMDemodGUI(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel, QWidget* parent) :
 	RollupWidget(parent),
 	ui(new Ui::NFMDemodGUI),
 	m_pluginAPI(pluginAPI),
-	m_deviceAPI(deviceAPI),
+	m_deviceUISet(deviceUISet),
 	m_channelMarker(this),
 	m_basicSettingsShown(false),
 	m_doApplySettings(true),
@@ -238,7 +261,7 @@ NFMDemodGUI::NFMDemodGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidg
 	connect(this, SIGNAL(widgetRolled(QWidget*,bool)), this, SLOT(onWidgetRolled(QWidget*,bool)));
     connect(this, SIGNAL(customContextMenuRequested(const QPoint &)), this, SLOT(onMenuDialogCalled(const QPoint &)));
 
-	m_nfmDemod = new NFMDemod(m_deviceAPI);
+	m_nfmDemod = reinterpret_cast<NFMDemod*>(rxChannel); //new NFMDemod(m_deviceUISet->m_deviceSourceAPI);
 	m_nfmDemod->setMessageQueueToGUI(getInputMessageQueue());
 
 	connect(&MainWindow::getInstance()->getMasterTimer(), SIGNAL(timeout()), this, SLOT(tick()));
@@ -270,22 +293,24 @@ NFMDemodGUI::NFMDemodGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidg
 	ui->deltaFrequency->setValueRange(false, 7, -9999999, 9999999);
     ui->channelPowerMeter->setColorTheme(LevelMeterSignalDB::ColorGreenAndBlue);
 
-	//m_channelMarker = new ChannelMarker(this);
-//	m_channelMarker.setColor(Qt::red);
-//	m_channelMarker.setBandwidth(12500);
-//	m_channelMarker.setCenterFrequency(0);
-	m_channelMarker.setVisible(true);
+    m_channelMarker.blockSignals(true);
+    m_channelMarker.setColor(Qt::red);
+    m_channelMarker.setBandwidth(5000);
+    m_channelMarker.setCenterFrequency(0);
     m_channelMarker.setTitle("NFM Demodulator");
-//    m_channelMarker.setUDPAddress("127.0.0.1");
-//    m_channelMarker.setUDPSendPort(9999);
-//    setTitleColor(m_channelMarker.getColor());
+    m_channelMarker.setUDPAddress("127.0.0.1");
+    m_channelMarker.setUDPSendPort(9999);
+    m_channelMarker.blockSignals(false);
+    m_channelMarker.setVisible(true); // activate signal on the last setting only
+
     m_settings.setChannelMarker(&m_channelMarker);
 
-	connect(&m_channelMarker, SIGNAL(changed()), this, SLOT(channelMarkerChanged()));
+    m_deviceUISet->registerRxChannelInstance(NFMDemod::m_channelIdURI, this);
+	m_deviceUISet->addChannelMarker(&m_channelMarker);
+	m_deviceUISet->addRollupWidget(this);
 
-	m_deviceAPI->registerChannelInstance(m_channelID, this);
-	m_deviceAPI->addChannelMarker(&m_channelMarker);
-	m_deviceAPI->addRollupWidget(this);
+	connect(&m_channelMarker, SIGNAL(changedByCursor()), this, SLOT(channelMarkerChangedByCursor()));
+    connect(&m_channelMarker, SIGNAL(highlightedByCursor()), this, SLOT(channelMarkerHighlightedByCursor()));
 
 	QChar delta = QChar(0x94, 0x03);
 	ui->deltaSquelch->setText(delta);
@@ -298,9 +323,8 @@ NFMDemodGUI::NFMDemodGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidg
 
 NFMDemodGUI::~NFMDemodGUI()
 {
-    m_deviceAPI->removeChannelInstance(this);
-	delete m_nfmDemod;
-	//delete m_channelMarker;
+    m_deviceUISet->removeRxChannelInstance(this);
+	delete m_nfmDemod; // TODO: check this: when the GUI closes it has to delete the demodulator
 	delete ui;
 }
 
@@ -310,13 +334,9 @@ void NFMDemodGUI::applySettings(bool force)
 	{
 		qDebug() << "NFMDemodGUI::applySettings";
 
-		setTitleColor(m_channelMarker.getColor());
-
         NFMDemod::MsgConfigureChannelizer* channelConfigMsg = NFMDemod::MsgConfigureChannelizer::create(
                 48000, m_channelMarker.getCenterFrequency());
         m_nfmDemod->getInputMessageQueue()->push(channelConfigMsg);
-
-        ui->deltaFrequency->setValue(m_channelMarker.getCenterFrequency());
 
         NFMDemod::MsgConfigureNFMDemod* message = NFMDemod::MsgConfigureNFMDemod::create( m_settings, force);
         m_nfmDemod->getInputMessageQueue()->push(message);
@@ -328,13 +348,17 @@ void NFMDemodGUI::displaySettings()
     m_channelMarker.blockSignals(true);
     m_channelMarker.setCenterFrequency(m_settings.m_inputFrequencyOffset);
     m_channelMarker.setBandwidth(m_settings.m_rfBandwidth);
-    m_channelMarker.setColor(m_settings.m_rgbColor);
-    setTitleColor(m_settings.m_rgbColor);
+    m_channelMarker.setTitle(m_settings.m_title);
     m_channelMarker.blockSignals(false);
+    m_channelMarker.setColor(m_settings.m_rgbColor);
 
+    setTitleColor(m_settings.m_rgbColor);
     setWindowTitle(m_channelMarker.getTitle());
+    displayUDPAddress();
 
     blockApplySettings(true);
+
+    ui->deltaFrequency->setValue(m_channelMarker.getCenterFrequency());
 
     ui->rfBW->setCurrentIndex(NFMDemodSettings::getRFBWIndex(m_settings.m_rfBandwidth));
 
@@ -374,21 +398,17 @@ void NFMDemodGUI::displaySettings()
 
 void NFMDemodGUI::displayUDPAddress()
 {
-    ui->copyAudioToUDP->setToolTip(QString("Copy audio output to UDP %1:%2").arg(m_channelMarker.getUDPAddress()).arg(m_channelMarker.getUDPSendPort()));
+    ui->copyAudioToUDP->setToolTip(QString("Copy audio output to UDP %1:%2").arg(m_settings.m_udpAddress).arg(m_settings.m_udpPort));
 }
 
 void NFMDemodGUI::leaveEvent(QEvent*)
 {
-	blockApplySettings(true);
 	m_channelMarker.setHighlighted(false);
-	blockApplySettings(false);
 }
 
 void NFMDemodGUI::enterEvent(QEvent*)
 {
-	blockApplySettings(true);
 	m_channelMarker.setHighlighted(true);
-	blockApplySettings(false);
 }
 
 void NFMDemodGUI::setCtcssFreq(Real ctcssFreq)

@@ -18,11 +18,12 @@
 #ifndef INCLUDE_RTLSDRINPUT_H
 #define INCLUDE_RTLSDRINPUT_H
 
-#include <dsp/devicesamplesource.h>
+#include <QString>
+#include <QByteArray>
 
+#include <dsp/devicesamplesource.h>
 #include "rtlsdrsettings.h"
 #include <rtl-sdr.h>
-#include <QString>
 
 class DeviceSourceAPI;
 class RTLSDRThread;
@@ -53,26 +54,6 @@ public:
 		{ }
 	};
 
-    class MsgReportRTLSDR : public Message {
-        MESSAGE_CLASS_DECLARATION
-
-    public:
-        const std::vector<int>& getGains() const { return m_gains; }
-
-        static MsgReportRTLSDR* create(const std::vector<int>& gains)
-        {
-            return new MsgReportRTLSDR(gains);
-        }
-
-    protected:
-        std::vector<int> m_gains;
-
-        MsgReportRTLSDR(const std::vector<int>& gains) :
-            Message(),
-            m_gains(gains)
-        { }
-    };
-
     class MsgFileRecord : public Message {
         MESSAGE_CLASS_DECLARATION
 
@@ -92,19 +73,62 @@ public:
         { }
     };
 
+    class MsgStartStop : public Message {
+        MESSAGE_CLASS_DECLARATION
+
+    public:
+        bool getStartStop() const { return m_startStop; }
+
+        static MsgStartStop* create(bool startStop) {
+            return new MsgStartStop(startStop);
+        }
+
+    protected:
+        bool m_startStop;
+
+        MsgStartStop(bool startStop) :
+            Message(),
+            m_startStop(startStop)
+        { }
+    };
+
 	RTLSDRInput(DeviceSourceAPI *deviceAPI);
 	virtual ~RTLSDRInput();
 	virtual void destroy();
 
+	virtual void init();
 	virtual bool start();
 	virtual void stop();
 
+    virtual QByteArray serialize() const;
+    virtual bool deserialize(const QByteArray& data);
+
+    virtual void setMessageQueueToGUI(MessageQueue *queue) { m_guiMessageQueue = queue; }
 	virtual const QString& getDeviceDescription() const;
 	virtual int getSampleRate() const;
 	virtual quint64 getCenterFrequency() const;
+    virtual void setCenterFrequency(qint64 centerFrequency);
 
 	virtual bool handleMessage(const Message& message);
-	virtual void setMessageQueueToGUI(MessageQueue *queue);
+
+    virtual int webapiSettingsGet(
+                SWGSDRangel::SWGDeviceSettings& response,
+                QString& errorMessage);
+
+    virtual int webapiSettingsPutPatch(
+                bool force,
+                const QStringList& deviceSettingsKeys,
+                SWGSDRangel::SWGDeviceSettings& response, // query + response
+                QString& errorMessage);
+
+    virtual int webapiRunGet(
+            SWGSDRangel::SWGDeviceState& response,
+            QString& errorMessage);
+
+    virtual int webapiRun(
+            bool run,
+            SWGSDRangel::SWGDeviceState& response,
+            QString& errorMessage);
 
 	const std::vector<int>& getGains() const { return m_gains; }
 	void set_ds_mode(int on);
@@ -132,6 +156,7 @@ private:
 	bool openDevice();
 	void closeDevice();
 	bool applySettings(const RTLSDRSettings& settings, bool force);
+	void webapiFormatDeviceSettings(SWGSDRangel::SWGDeviceSettings& response, const RTLSDRSettings& settings);
 };
 
 #endif // INCLUDE_RTLSDRINPUT_H

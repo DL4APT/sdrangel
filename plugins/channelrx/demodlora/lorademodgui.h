@@ -9,9 +9,10 @@
 #include "lorademodsettings.h"
 
 class PluginAPI;
-class DeviceSourceAPI;
+class DeviceUISet;
 class LoRaDemod;
 class SpectrumVis;
+class BasebandSampleSink;
 
 namespace Ui {
 	class LoRaDemodGUI;
@@ -21,7 +22,7 @@ class LoRaDemodGUI : public RollupWidget, public PluginInstanceGUI {
 	Q_OBJECT
 
 public:
-	static LoRaDemodGUI* create(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI);
+	static LoRaDemodGUI* create(PluginAPI* pluginAPI, DeviceUISet *deviceAPI, BasebandSampleSink *rxChannel);
 	virtual void destroy();
 
 	void setName(const QString& name);
@@ -35,29 +36,25 @@ public:
 	virtual MessageQueue *getInputMessageQueue() { return &m_inputMessageQueue; }
 	virtual bool handleMessage(const Message& message);
 
-	static const QString m_channelID;
-
 private slots:
 	void viewChanged();
 	void on_BW_valueChanged(int value);
 	void on_Spread_valueChanged(int value);
 	void onWidgetRolled(QWidget* widget, bool rollDown);
-	void onMenuDoubleClicked();
 
 private:
 	Ui::LoRaDemodGUI* ui;
 	PluginAPI* m_pluginAPI;
-	DeviceSourceAPI* m_deviceAPI;
+	DeviceUISet* m_deviceUISet;
 	ChannelMarker m_channelMarker;
 	LoRaDemodSettings m_settings;
-	bool m_basicSettingsShown;
 	bool m_doApplySettings;
 
 	LoRaDemod* m_LoRaDemod;
 	SpectrumVis* m_spectrumVis;
 	MessageQueue m_inputMessageQueue;
 
-	explicit LoRaDemodGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidget* parent = NULL);
+	explicit LoRaDemodGUI(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel, QWidget* parent = 0);
 	virtual ~LoRaDemodGUI();
 
     void blockApplySettings(bool block);

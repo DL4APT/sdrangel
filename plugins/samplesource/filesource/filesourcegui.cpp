@@ -33,13 +33,15 @@
 
 #include "filesourcegui.h"
 #include <device/devicesourceapi.h>
+#include "device/deviceuiset.h"
 
-FileSourceGui::FileSourceGui(DeviceSourceAPI *deviceAPI, QWidget* parent) :
+FileSourceGui::FileSourceGui(DeviceUISet *deviceUISet, QWidget* parent) :
 	QWidget(parent),
 	ui(new Ui::FileSourceGui),
-	m_deviceAPI(deviceAPI),
+	m_deviceUISet(deviceUISet),
 	m_settings(),
-	m_sampleSource(NULL),
+	m_doApplySettings(true),
+	m_sampleSource(0),
 	m_acquisition(false),
 	m_fileName("..."),
 	m_sampleRate(0),
@@ -56,7 +58,7 @@ FileSourceGui::FileSourceGui(DeviceSourceAPI *deviceAPI, QWidget* parent) :
 	ui->centerFrequency->setValueRange(7, 0, pow(10,7));
 	ui->fileNameText->setText(m_fileName);
 
-	connect(&(m_deviceAPI->getMasterTimer()), SIGNAL(timeout()), this, SLOT(tick()));
+	connect(&(m_deviceUISet->m_deviceSourceAPI->getMasterTimer()), SIGNAL(timeout()), this, SLOT(tick()));
 	connect(&m_statusTimer, SIGNAL(timeout()), this, SLOT(updateStatus()));
 	m_statusTimer.start(500);
 
@@ -66,7 +68,7 @@ FileSourceGui::FileSourceGui(DeviceSourceAPI *deviceAPI, QWidget* parent) :
 	ui->playLoop->setChecked(true); // FIXME: always play in a loop
 	ui->playLoop->setEnabled(false);
 
-    m_sampleSource = m_deviceAPI->getSampleSource();
+    m_sampleSource = m_deviceUISet->m_deviceSourceAPI->getSampleSource();
 
     connect(&m_inputMessageQueue, SIGNAL(messageEnqueued()), this, SLOT(handleInputMessages()), Qt::QueuedConnection);
 }
@@ -133,8 +135,6 @@ void FileSourceGui::handleInputMessages()
 
     while ((message = m_inputMessageQueue.pop()) != 0)
     {
-        qDebug("FileSourceGui::handleInputMessages: message: %s", message->getIdentifier());
-
         if (DSPSignalNotification::match(*message))
         {
             DSPSignalNotification* notif = (DSPSignalNotification*) message;
@@ -157,7 +157,16 @@ void FileSourceGui::handleInputMessages()
 
 bool FileSourceGui::handleMessage(const Message& message)
 {
-	if (FileSourceInput::MsgReportFileSourceAcquisition::match(message))
+    if (FileSourceInput::MsgConfigureFileSource::match(message))
+    {
+        const FileSourceInput::MsgConfigureFileSource& cfg = (FileSourceInput::MsgConfigureFileSource&) message;
+        m_settings = cfg.getSettings();
+        blockApplySettings(true);
+        displaySettings();
+        blockApplySettings(false);
+        return true;
+    }
+    else if (FileSourceInput::MsgReportFileSourceAcquisition::match(message))
 	{
 		m_acquisition = ((FileSourceInput::MsgReportFileSourceAcquisition&)message).getAcquisition();
 		updateWithAcquisition();
@@ -166,6 +175,7 @@ bool FileSourceGui::handleMessage(const Message& message)
 	else if (FileSourceInput::MsgReportFileSourceStreamData::match(message))
 	{
 		m_sampleRate = ((FileSourceInput::MsgReportFileSourceStreamData&)message).getSampleRate();
+		m_sampleSize = ((FileSourceInput::MsgReportFileSourceStreamData&)message).getSampleSize();
 		m_centerFrequency = ((FileSourceInput::MsgReportFileSourceStreamData&)message).getCenterFrequency();
 		m_startingTimeStamp = ((FileSourceInput::MsgReportFileSourceStreamData&)message).getStartingTimeStamp();
 		m_recordLength = ((FileSourceInput::MsgReportFileSourceStreamData&)message).getRecordLength();
@@ -178,6 +188,15 @@ bool FileSourceGui::handleMessage(const Message& message)
 		updateWithStreamTime();
 		return true;
 	}
+	else if (FileSourceInput::MsgStartStop::match(message))
+    {
+	    FileSourceInput::MsgStartStop& notif = (FileSourceInput::MsgStartStop&) message;
+        blockApplySettings(true);
+        ui->startStop->setChecked(notif.getStartStop());
+        blockApplySettings(false);
+
+        return true;
+    }
 	else
 	{
 		return false;
@@ -186,8 +205,8 @@ bool FileSourceGui::handleMessage(const Message& message)
 
 void FileSourceGui::updateSampleRateAndFrequency()
 {
-    m_deviceAPI->getSpectrum()->setSampleRate(m_deviceSampleRate);
-    m_deviceAPI->getSpectrum()->setCenterFrequency(m_deviceCenterFrequency);
+    m_deviceUISet->getSpectrum()->setSampleRate(m_deviceSampleRate);
+    m_deviceUISet->getSpectrum()->setCenterFrequency(m_deviceCenterFrequency);
     ui->deviceRateText->setText(tr("%1k").arg((float)m_deviceSampleRate / 1000));
 }
 
@@ -206,24 +225,16 @@ void FileSourceGui::on_playLoop_toggled(bool checked __attribute__((unused)))
 
 void FileSourceGui::on_startStop_toggled(bool checked)
 {
-    if (checked)
+    if (m_doApplySettings)
     {
-        if (m_deviceAPI->initAcquisition())
-        {
-            m_deviceAPI->startAcquisition();
-            DSPEngine::instance()->startAudioOutput();
-        }
-    }
-    else
-    {
-        m_deviceAPI->stopAcquisition();
-        DSPEngine::instance()->stopAudioOutput();
+        FileSourceInput::MsgStartStop *message = FileSourceInput::MsgStartStop::create(checked);
+        m_sampleSource->getInputMessageQueue()->push(message);
     }
 }
 
 void FileSourceGui::updateStatus()
 {
-    int state = m_deviceAPI->state();
+    int state = m_deviceUISet->m_deviceSourceAPI->state();
 
     if(m_lastEngineState != state)
     {
@@ -240,7 +251,7 @@ void FileSourceGui::updateStatus()
                 break;
             case DSPDeviceSourceEngine::StError:
                 ui->startStop->setStyleSheet("QToolButton { background-color : red; }");
-                QMessageBox::information(this, tr("Message"), m_deviceAPI->errorMessage());
+                QMessageBox::information(this, tr("Message"), m_deviceUISet->m_deviceSourceAPI->errorMessage());
                 break;
             default:
                 break;
@@ -302,6 +313,7 @@ void FileSourceGui::updateWithStreamData()
 {
 	ui->centerFrequency->setValue(m_centerFrequency/1000);
 	ui->sampleRateText->setText(tr("%1k").arg((float)m_sampleRate / 1000));
+	ui->sampleSizeText->setText(tr("%1b").arg(m_sampleSize));
 	ui->play->setEnabled(m_acquisition);
 	QTime recordLength(0, 0, 0, 0);
 	recordLength = recordLength.addSecs(m_recordLength);

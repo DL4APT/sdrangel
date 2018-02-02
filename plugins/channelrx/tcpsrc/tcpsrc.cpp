@@ -30,11 +30,16 @@ MESSAGE_CLASS_DEFINITION(TCPSrc::MsgConfigureChannelizer, Message)
 MESSAGE_CLASS_DEFINITION(TCPSrc::MsgTCPSrcConnection, Message)
 MESSAGE_CLASS_DEFINITION(TCPSrc::MsgTCPSrcSpectrum, Message)
 
+const QString TCPSrc::m_channelIdURI = "sdrangel.channel.tcpsrc";
+const QString TCPSrc::m_channelId = "TCPSrc";
+
 TCPSrc::TCPSrc(DeviceSourceAPI* deviceAPI) :
-    m_deviceAPI(deviceAPI),
-	m_settingsMutex(QMutex::Recursive)
+        ChannelSinkAPI(m_channelIdURI),
+        m_deviceAPI(deviceAPI),
+        m_absoluteFrequencyOffset(0),
+        m_settingsMutex(QMutex::Recursive)
 {
-	setObjectName("TCPSrc");
+	setObjectName(m_channelId);
 
 	m_inputSampleRate = 96000;
 	m_sampleFormat = TCPSrcSettings::FormatSSB;
@@ -56,19 +61,20 @@ TCPSrc::TCPSrc(DeviceSourceAPI* deviceAPI) :
 	m_volume = 0;
 	m_magsq = 0;
 
+	m_sampleBufferSSB.resize(tcpFftLen);
+	TCPFilter = new fftfilt(0.3 / 48.0, 16.0 / 48.0, tcpFftLen);
+
     m_channelizer = new DownChannelizer(this);
     m_threadedChannelizer = new ThreadedBasebandSampleSink(m_channelizer, this);
     m_deviceAPI->addThreadedSink(m_threadedChannelizer);
-
-	m_sampleBufferSSB.resize(tcpFftLen);
-	TCPFilter = new fftfilt(0.3 / 48.0, 16.0 / 48.0, tcpFftLen);
-	// if (!TCPFilter) segfault;
+    m_deviceAPI->addChannelAPI(this);
 }
 
 TCPSrc::~TCPSrc()
 {
 	if (TCPFilter) delete TCPFilter;
 
+	m_deviceAPI->removeChannelAPI(this);
     m_deviceAPI->removeThreadedSink(m_threadedChannelizer);
     delete m_threadedChannelizer;
     delete m_channelizer;
@@ -91,17 +97,15 @@ void TCPSrc::feed(const SampleVector::const_iterator& begin, const SampleVector:
 	m_settingsMutex.lock();
 
 	// Rtl-Sdr uses full 16-bit scale; FCDPP does not
-	//int rescale = 32768 * (1 << m_boost);
 	int rescale = (1 << m_volume);
 
 	for(SampleVector::const_iterator it = begin; it < end; ++it) {
-		//Complex c(it->real() / 32768.0f, it->imag() / 32768.0f);
 		Complex c(it->real(), it->imag());
 		c *= m_nco.nextIQ();
 
 		if(m_interpolator.decimate(&m_sampleDistanceRemain, c, &ci))
 		{
-			m_magsq = ((ci.real()*ci.real() +  ci.imag()*ci.imag())*rescale*rescale) / (1<<30);
+			m_magsq = ((ci.real()*ci.real() +  ci.imag()*ci.imag())*rescale*rescale) / (SDR_RX_SCALED*SDR_RX_SCALED);
 			m_sampleBuffer.push_back(Sample(ci.real() * rescale, ci.imag() * rescale));
 			m_sampleDistanceRemain += m_inputSampleRate / m_outputSampleRate;
 		}
@@ -139,7 +143,7 @@ void TCPSrc::feed(const SampleVector::const_iterator& begin, const SampleVector:
 
 	if((m_sampleFormat == TCPSrcSettings::FormatNFM) && (m_ssbSockets.count() > 0)) {
 		for(SampleVector::const_iterator it = m_sampleBuffer.begin(); it != m_sampleBuffer.end(); ++it) {
-			Complex cj(it->real() / 32768.0f, it->imag() / 32768.0f);
+			Complex cj(it->real() / SDR_RX_SCALEF, it->imag() / SDR_RX_SCALEF);
 			// An FFT filter here is overkill, but was already set up for SSB
 			int n_out = TCPFilter->runFilt(cj, &sideband);
 			if (n_out) {
@@ -225,6 +229,7 @@ bool TCPSrc::handleMessage(const Message& cmd)
         TCPSrcSettings settings = cfg.getSettings();
 
         // These settings are set with DownChannelizer::MsgChannelizerNotification
+        m_absoluteFrequencyOffset = settings.m_inputFrequencyOffset;
         settings.m_inputSampleRate = m_settings.m_inputSampleRate;
         settings.m_inputFrequencyOffset = m_settings.m_inputFrequencyOffset;
 
@@ -453,3 +458,26 @@ void TCPSrc::onTcpServerError(QAbstractSocket::SocketError socketError __attribu
 {
 	qDebug("TCPSrc::onTcpServerError: %s", qPrintable(m_tcpServer->errorString()));
 }
+
+QByteArray TCPSrc::serialize() const
+{
+    return m_settings.serialize();
+}
+
+bool TCPSrc::deserialize(const QByteArray& data)
+{
+    if (m_settings.deserialize(data))
+    {
+        MsgConfigureTCPSrc *msg = MsgConfigureTCPSrc::create(m_settings, true);
+        m_inputMessageQueue.push(msg);
+        return true;
+    }
+    else
+    {
+        m_settings.resetToDefaults();
+        MsgConfigureTCPSrc *msg = MsgConfigureTCPSrc::create(m_settings, true);
+        m_inputMessageQueue.push(msg);
+        return false;
+    }
+}
+

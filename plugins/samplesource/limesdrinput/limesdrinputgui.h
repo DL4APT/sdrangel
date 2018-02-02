@@ -25,7 +25,7 @@
 
 #include "limesdrinput.h"
 
-class DeviceSourceAPI;
+class DeviceUISet;
 
 namespace Ui {
     class LimeSDRInputGUI;
@@ -35,7 +35,7 @@ class LimeSDRInputGUI : public QWidget, public PluginInstanceGUI {
     Q_OBJECT
 
 public:
-    explicit LimeSDRInputGUI(DeviceSourceAPI *deviceAPI, QWidget* parent = 0);
+    explicit LimeSDRInputGUI(DeviceUISet *deviceUISet, QWidget* parent = 0);
     virtual ~LimeSDRInputGUI();
     virtual void destroy();
 
@@ -53,7 +53,7 @@ public:
 private:
     Ui::LimeSDRInputGUI* ui;
 
-    DeviceSourceAPI* m_deviceAPI;
+    DeviceUISet* m_deviceUISet;
     LimeSDRInput* m_limeSDRInput; //!< Same object as above but gives easy access to LimeSDRInput methods and attributes that are used intensively
     LimeSDRInputSettings m_settings;
     QTimer m_updateTimer;
@@ -96,6 +96,7 @@ private slots:
     void on_tiaGain_currentIndexChanged(int index);
     void on_pgaGain_valueChanged(int value);
     void on_antenna_currentIndexChanged(int index);
+    void on_extClock_clicked();
 
     void updateHardware();
     void updateStatus();

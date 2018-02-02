@@ -17,6 +17,7 @@
 #include "chanalyzergui.h"
 
 #include <device/devicesourceapi.h>
+#include "device/deviceuiset.h"
 #include <dsp/downchannelizer.h>
 #include <QDockWidget>
 #include <QMainWindow>
@@ -31,17 +32,14 @@
 #include "plugin/pluginapi.h"
 #include "util/simpleserializer.h"
 #include "util/db.h"
-#include "gui/basicchannelsettingswidget.h"
 #include "dsp/dspengine.h"
 #include "mainwindow.h"
 
 #include "chanalyzer.h"
 
-const QString ChannelAnalyzerGUI::m_channelID = "org.f4exb.sdrangelove.channel.chanalyzer";
-
-ChannelAnalyzerGUI* ChannelAnalyzerGUI::create(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI)
+ChannelAnalyzerGUI* ChannelAnalyzerGUI::create(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel)
 {
-	ChannelAnalyzerGUI* gui = new ChannelAnalyzerGUI(pluginAPI, deviceAPI);
+	ChannelAnalyzerGUI* gui = new ChannelAnalyzerGUI(pluginAPI, deviceUISet, rxChannel);
 	return gui;
 }
 
@@ -85,7 +83,7 @@ void ChannelAnalyzerGUI::resetToDefaults()
 
 QByteArray ChannelAnalyzerGUI::serialize() const
 {
-	SimpleSerializer s(1);
+    SimpleSerializer s(1);
 	s.writeS32(1, m_channelMarker.getCenterFrequency());
 	s.writeS32(2, ui->BW->value());
 	s.writeBlob(3, ui->spectrumGUI->serialize());
@@ -94,6 +92,7 @@ QByteArray ChannelAnalyzerGUI::serialize() const
 	s.writeS32(6, ui->spanLog2->value());
 	s.writeBool(7, ui->ssb->isChecked());
 	s.writeBlob(8, ui->scopeGUI->serialize());
+
 	return s.final();
 }
 
@@ -141,6 +140,7 @@ bool ChannelAnalyzerGUI::deserialize(const QByteArray& data)
 
 		blockApplySettings(false);
 	    m_channelMarker.blockSignals(false);
+	    m_channelMarker.emitChangedByAPI();
 
 		ui->BW->setValue(bw);
 		ui->lowCut->setValue(lowCut); // does applySettings();
@@ -180,9 +180,17 @@ void ChannelAnalyzerGUI::handleInputMessages()
     }
 }
 
-void ChannelAnalyzerGUI::viewChanged()
+void ChannelAnalyzerGUI::channelMarkerChangedByCursor()
 {
-	applySettings();
+    ui->deltaFrequency->setValue(abs(m_channelMarker.getCenterFrequency()));
+    ui->deltaMinus->setChecked(m_channelMarker.getCenterFrequency() < 0);
+
+    applySettings();
+}
+
+void ChannelAnalyzerGUI::channelMarkerHighlightedByCursor()
+{
+    setHighlighted(m_channelMarker.getHighlighted());
 }
 
 void ChannelAnalyzerGUI::tick()
@@ -210,6 +218,8 @@ void ChannelAnalyzerGUI::on_deltaFrequency_changed(quint64 value)
 	} else {
 		m_channelMarker.setCenterFrequency(value);
 	}
+
+	applySettings();
 }
 
 void ChannelAnalyzerGUI::on_BW_valueChanged(int value)
@@ -313,22 +323,12 @@ void ChannelAnalyzerGUI::onWidgetRolled(QWidget* widget __attribute__((unused)),
 	*/
 }
 
-void ChannelAnalyzerGUI::onMenuDoubleClicked()
-{
-	if(!m_basicSettingsShown) {
-		m_basicSettingsShown = true;
-		BasicChannelSettingsWidget* bcsw = new BasicChannelSettingsWidget(&m_channelMarker, this);
-		bcsw->show();
-	}
-}
-
-ChannelAnalyzerGUI::ChannelAnalyzerGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidget* parent) :
+ChannelAnalyzerGUI::ChannelAnalyzerGUI(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel, QWidget* parent) :
 	RollupWidget(parent),
 	ui(new Ui::ChannelAnalyzerGUI),
 	m_pluginAPI(pluginAPI),
-	m_deviceAPI(deviceAPI),
+	m_deviceUISet(deviceUISet),
 	m_channelMarker(this),
-	m_basicSettingsShown(false),
 	m_doApplySettings(true),
 	m_rate(6000),
 	m_spanLog2(3),
@@ -337,12 +337,11 @@ ChannelAnalyzerGUI::ChannelAnalyzerGUI(PluginAPI* pluginAPI, DeviceSourceAPI *de
 	ui->setupUi(this);
 	setAttribute(Qt::WA_DeleteOnClose, true);
 	connect(this, SIGNAL(widgetRolled(QWidget*,bool)), this, SLOT(onWidgetRolled(QWidget*,bool)));
-	connect(this, SIGNAL(menuDoubleClickEvent()), this, SLOT(onMenuDoubleClicked()));
 
-	m_spectrumVis = new SpectrumVis(ui->glSpectrum);
-	m_scopeVis = new ScopeVis(ui->glScope);
+	m_spectrumVis = new SpectrumVis(SDR_RX_SCALEF, ui->glSpectrum);
+	m_scopeVis = new ScopeVis(SDR_RX_SCALEF, ui->glScope);
 	m_spectrumScopeComboVis = new SpectrumScopeComboVis(m_spectrumVis, m_scopeVis);
-	m_channelAnalyzer = new ChannelAnalyzer(m_deviceAPI);
+	m_channelAnalyzer = (ChannelAnalyzer*) rxChannel; //new ChannelAnalyzer(m_deviceUISet->m_deviceSourceAPI);
 	m_channelAnalyzer->setSampleSink(m_spectrumScopeComboVis);
 	m_channelAnalyzer->setMessageQueueToGUI(getInputMessageQueue());
 
@@ -359,22 +358,24 @@ ChannelAnalyzerGUI::ChannelAnalyzerGUI(PluginAPI* pluginAPI, DeviceSourceAPI *de
     ui->glScope->connectTimer(MainWindow::getInstance()->getMasterTimer());
     connect(&MainWindow::getInstance()->getMasterTimer(), SIGNAL(timeout()), this, SLOT(tick()));
 
-    //m_channelMarker = new ChannelMarker(this);
+    m_channelMarker.blockSignals(true);
 	m_channelMarker.setColor(Qt::gray);
 	m_channelMarker.setBandwidth(m_rate);
 	m_channelMarker.setSidebands(ChannelMarker::usb);
 	m_channelMarker.setCenterFrequency(0);
-	m_channelMarker.setVisible(true);
+    m_channelMarker.blockSignals(false);
+	m_channelMarker.setVisible(true); // activate signal on the last setting only
+    setTitleColor(m_channelMarker.getColor());
 
-	connect(&m_channelMarker, SIGNAL(changed()), this, SLOT(viewChanged()));
-
-	m_deviceAPI->registerChannelInstance(m_channelID, this);
-	m_deviceAPI->addChannelMarker(&m_channelMarker);
-	m_deviceAPI->addRollupWidget(this);
+	m_deviceUISet->registerRxChannelInstance(ChannelAnalyzer::m_channelIdURI, this);
+	m_deviceUISet->addChannelMarker(&m_channelMarker);
+	m_deviceUISet->addRollupWidget(this);
 
 	ui->spectrumGUI->setBuddies(m_spectrumVis->getInputMessageQueue(), m_spectrumVis, ui->glSpectrum);
 	ui->scopeGUI->setBuddies(m_scopeVis->getInputMessageQueue(), m_scopeVis, ui->glScope);
 
+	connect(&m_channelMarker, SIGNAL(changedByCursor()), this, SLOT(channelMarkerChangedByCursor()));
+    connect(&m_channelMarker, SIGNAL(highlightedByCursor()), this, SLOT(channelMarkerHighlightedByCursor()));
 	connect(getInputMessageQueue(), SIGNAL(messageEnqueued()), this, SLOT(handleInputMessages()));
 
 	applySettings();
@@ -383,12 +384,11 @@ ChannelAnalyzerGUI::ChannelAnalyzerGUI(PluginAPI* pluginAPI, DeviceSourceAPI *de
 
 ChannelAnalyzerGUI::~ChannelAnalyzerGUI()
 {
-    m_deviceAPI->removeChannelInstance(this);
-	delete m_channelAnalyzer;
+    m_deviceUISet->removeRxChannelInstance(this);
+	delete m_channelAnalyzer; // TODO: check this: when the GUI closes it has to delete the demodulator
 	delete m_spectrumVis;
 	delete m_scopeVis;
 	delete m_spectrumScopeComboVis;
-	//delete m_channelMarker;
 	delete ui;
 }
 
@@ -401,7 +401,6 @@ bool ChannelAnalyzerGUI::setNewRate(int spanLog2)
 	}
 
 	m_spanLog2 = spanLog2;
-	//m_rate = 48000 / (1<<spanLog2);
 	m_rate = m_channelAnalyzer->getSampleRate() / (1<<spanLog2);
 
 	if (ui->BW->value() < -m_rate/200) {
@@ -466,10 +465,6 @@ void ChannelAnalyzerGUI::applySettings()
 {
 	if (m_doApplySettings)
 	{
-		setTitleColor(m_channelMarker.getColor());
-		ui->deltaFrequency->setValue(abs(m_channelMarker.getCenterFrequency()));
-		ui->deltaMinus->setChecked(m_channelMarker.getCenterFrequency() < 0);
-
 		ChannelAnalyzer::MsgConfigureChannelizer *msg = ChannelAnalyzer::MsgConfigureChannelizer::create(m_channelMarker.getCenterFrequency());
 		m_channelAnalyzer->getInputMessageQueue()->push(msg);
 
@@ -483,15 +478,11 @@ void ChannelAnalyzerGUI::applySettings()
 
 void ChannelAnalyzerGUI::leaveEvent(QEvent*)
 {
-	blockApplySettings(true);
 	m_channelMarker.setHighlighted(false);
-	blockApplySettings(false);
 }
 
 void ChannelAnalyzerGUI::enterEvent(QEvent*)
 {
-	blockApplySettings(true);
 	m_channelMarker.setHighlighted(true);
-	blockApplySettings(false);
 }
 

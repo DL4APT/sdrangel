@@ -29,7 +29,6 @@ ATVModSettings::ATVModSettings() :
 
 void ATVModSettings::resetToDefaults()
 {
-    m_outputSampleRate = 1000000;
     m_inputFrequencyOffset = 0;
     m_rfBandwidth = 1000000;
     m_rfOppBandwidth = 0;
@@ -44,11 +43,14 @@ void ATVModSettings::resetToDefaults()
     m_cameraPlay = false;
     m_channelMute = false;
     m_invertedVideo = false;
-    m_rfScalingFactor = 29204.0f; // -1dB
+    m_rfScalingFactor = 0.891235351562f * SDR_TX_SCALEF; // -1dB
     m_fmExcursion = 0.5f;         // half bandwidth
     m_forceDecimator = false;
     m_overlayText = "ATV";
-    m_rgbColor = Qt::white;
+    m_rgbColor = QColor(255, 255, 255).rgb();
+    m_title = "ATV Modulator";
+    m_udpAddress = "127.0.0.1";
+    m_udpPort = 9999;
 }
 
 QByteArray ATVModSettings::serialize() const
@@ -73,6 +75,8 @@ QByteArray ATVModSettings::serialize() const
     if (m_channelMarker) {
         s.writeBlob(15, m_channelMarker->serialize());
     }
+
+    s.writeString(16, m_title);
 
     return s.final();
 }
@@ -119,6 +123,8 @@ bool ATVModSettings::deserialize(const QByteArray& data)
             d.readBlob(15, &bytetmp);
             m_channelMarker->deserialize(bytetmp);
         }
+
+        d.readString(16, &m_title, "ATV Modulator");
 
         return true;
     }

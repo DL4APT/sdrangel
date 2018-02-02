@@ -18,6 +18,9 @@
 #include <errno.h>
 #include <QDebug>
 
+#include "SWGDeviceSettings.h"
+#include "SWGDeviceState.h"
+
 #include "util/simpleserializer.h"
 #include "dsp/dspcommands.h"
 #include "dsp/dspengine.h"
@@ -32,9 +35,11 @@
 MESSAGE_CLASS_DEFINITION(SDRPlayInput::MsgConfigureSDRPlay, Message)
 MESSAGE_CLASS_DEFINITION(SDRPlayInput::MsgReportSDRPlayGains, Message)
 MESSAGE_CLASS_DEFINITION(SDRPlayInput::MsgFileRecord, Message)
+MESSAGE_CLASS_DEFINITION(SDRPlayInput::MsgStartStop, Message)
 
 SDRPlayInput::SDRPlayInput(DeviceSourceAPI *deviceAPI) :
     m_deviceAPI(deviceAPI),
+    m_variant(SDRPlayUndef),
     m_settings(),
 	m_dev(0),
     m_sdrPlayThread(0),
@@ -77,13 +82,13 @@ bool SDRPlayInput::openDevice()
 
     if (!m_sampleFifo.setSize(96000 * 4))
     {
-        qCritical("SDRPlayInput::start: could not allocate SampleFifo");
+        qCritical("SDRPlayInput::openDevice: could not allocate SampleFifo");
         return false;
     }
 
     if ((res = mirisdr_open(&m_dev, MIRISDR_HW_SDRPLAY, m_devNumber)) < 0)
     {
-        qCritical("SDRPlayInput::start: could not open SDRPlay #%d: %s", m_devNumber, strerror(errno));
+        qCritical("SDRPlayInput::openDevice: could not open SDRPlay #%d: %s", m_devNumber, strerror(errno));
         return false;
     }
 
@@ -97,13 +102,23 @@ bool SDRPlayInput::openDevice()
 
     if ((res = mirisdr_get_device_usb_strings(m_devNumber, vendor, product, serial)) < 0)
     {
-        qCritical("SDRPlayInput::start: error accessing USB device");
+        qCritical("SDRPlayInput::openDevice: error accessing USB device");
         stop();
         return false;
     }
 
-    qWarning("SDRPlayInput::start: open: %s %s, SN: %s", vendor, product, serial);
+    qWarning("SDRPlayInput::openDevice: %s %s, SN: %s", vendor, product, serial);
     m_deviceDescription = QString("%1 (SN %2)").arg(product).arg(serial);
+
+    if (QString(product) == "RSP1A") {
+        m_variant = SDRPlayRSP1A;
+    } else if (QString(product) == "RSP2") {
+        m_variant = SDRPlayRSP2;
+    } else {
+        m_variant = SDRPlayRSP1;
+    }
+
+    qDebug("SDRPlayInput::openDevice: m_variant: %d", (int) m_variant);
 
     return true;
 }
@@ -183,6 +198,11 @@ void SDRPlayInput::closeDevice()
     m_deviceDescription.clear();
 }
 
+void SDRPlayInput::init()
+{
+    applySettings(m_settings, true, true);
+}
+
 void SDRPlayInput::stop()
 {
 //    QMutexLocker mutexLocker(&m_mutex);
@@ -195,6 +215,33 @@ void SDRPlayInput::stop()
     }
 
     m_running = false;
+}
+
+QByteArray SDRPlayInput::serialize() const
+{
+    return m_settings.serialize();
+}
+
+bool SDRPlayInput::deserialize(const QByteArray& data)
+{
+    bool success = true;
+
+    if (!m_settings.deserialize(data))
+    {
+        m_settings.resetToDefaults();
+        success = false;
+    }
+
+    MsgConfigureSDRPlay* message = MsgConfigureSDRPlay::create(m_settings, true);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue)
+    {
+        MsgConfigureSDRPlay* messageToGUI = MsgConfigureSDRPlay::create(m_settings, true);
+        m_guiMessageQueue->push(messageToGUI);
+    }
+
+    return success;
 }
 
 const QString& SDRPlayInput::getDeviceDescription() const
@@ -211,6 +258,21 @@ int SDRPlayInput::getSampleRate() const
 quint64 SDRPlayInput::getCenterFrequency() const
 {
     return m_settings.m_centerFrequency;
+}
+
+void SDRPlayInput::setCenterFrequency(qint64 centerFrequency)
+{
+    SDRPlaySettings settings = m_settings;
+    settings.m_centerFrequency = centerFrequency;
+
+    MsgConfigureSDRPlay* message = MsgConfigureSDRPlay::create(settings, false);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue)
+    {
+        MsgConfigureSDRPlay* messageToGUI = MsgConfigureSDRPlay::create(settings, false);
+        m_guiMessageQueue->push(messageToGUI);
+    }
 }
 
 bool SDRPlayInput::handleMessage(const Message& message)
@@ -249,6 +311,27 @@ bool SDRPlayInput::handleMessage(const Message& message)
             m_fileSink->startRecording();
         } else {
             m_fileSink->stopRecording();
+        }
+
+        return true;
+    }
+    else if (MsgStartStop::match(message))
+    {
+        MsgStartStop& cmd = (MsgStartStop&) message;
+        qDebug() << "SDRPlayInput::handleMessage: MsgStartStop: " << (cmd.getStartStop() ? "start" : "stop");
+
+        if (cmd.getStartStop())
+        {
+            if (m_deviceAPI->initAcquisition())
+            {
+                m_deviceAPI->startAcquisition();
+                DSPEngine::instance()->startAudioOutput();
+            }
+        }
+        else
+        {
+            m_deviceAPI->stopAcquisition();
+            DSPEngine::instance()->stopAudioOutput();
         }
 
         return true;
@@ -429,31 +512,36 @@ bool SDRPlayInput::applySettings(const SDRPlaySettings& settings, bool forwardCh
 
     if ((m_settings.m_log2Decim != settings.m_log2Decim) || force)
     {
-        m_settings.m_log2Decim = settings.m_log2Decim;
-        forwardChange = true;
-
         if (m_sdrPlayThread != 0)
         {
             m_sdrPlayThread->setLog2Decimation(m_settings.m_log2Decim);
-            qDebug() << "SDRPlayInput::applySettings: set decimation to " << (1<<m_settings.m_log2Decim);
+            qDebug() << "SDRPlayInput::applySettings: set decimation to " << (1<<settings.m_log2Decim);
         }
     }
 
-    if (m_settings.m_centerFrequency != settings.m_centerFrequency)
+    if ((m_settings.m_fcPos != settings.m_fcPos) || force)
     {
-        forwardChange = true;
+        if (m_sdrPlayThread != 0)
+        {
+            m_sdrPlayThread->setFcPos((int) m_settings.m_fcPos);
+            qDebug() << "SDRPlayInput: set fc pos (enum) to " << (int) settings.m_fcPos;
+        }
     }
 
-    qint64 deviceCenterFrequency = m_settings.m_centerFrequency;
-    qint64 f_img = deviceCenterFrequency;
-    quint32 devSampleRate = SDRPlaySampleRates::getRate(m_settings.m_devSampleRateIndex);
-
-    if (force || (m_settings.m_centerFrequency != settings.m_centerFrequency)
-            || (m_settings.m_LOppmTenths != settings.m_LOppmTenths)
-            || (m_settings.m_fcPos != settings.m_fcPos))
+    if ((m_settings.m_centerFrequency != settings.m_centerFrequency)
+        || (m_settings.m_LOppmTenths != settings.m_LOppmTenths)
+        || (m_settings.m_fcPos != settings.m_fcPos)
+        || (m_settings.m_log2Decim != settings.m_log2Decim) || force)
     {
         m_settings.m_centerFrequency = settings.m_centerFrequency;
         m_settings.m_LOppmTenths = settings.m_LOppmTenths;
+        m_settings.m_fcPos = settings.m_fcPos;
+        m_settings.m_log2Decim = settings.m_log2Decim;
+        qint64 deviceCenterFrequency = m_settings.m_centerFrequency;
+        qint64 f_img = deviceCenterFrequency;
+        quint32 devSampleRate = SDRPlaySampleRates::getRate(m_settings.m_devSampleRateIndex);
+
+        forwardChange = true;
 
         if ((m_settings.m_log2Decim == 0) || (settings.m_fcPos == SDRPlaySettings::FC_POS_CENTER))
         {
@@ -476,7 +564,7 @@ bool SDRPlayInput::applySettings(const SDRPlaySettings& settings, bool forwardCh
 
         if(m_dev != 0)
         {
-            if (setCenterFrequency(deviceCenterFrequency))
+            if (setDeviceCenterFrequency(deviceCenterFrequency))
             {
                 qDebug() << "SDRPlayInput::applySettings: center freq: " << m_settings.m_centerFrequency << " Hz"
                         << " device center freq: " << deviceCenterFrequency << " Hz"
@@ -484,17 +572,6 @@ bool SDRPlayInput::applySettings(const SDRPlaySettings& settings, bool forwardCh
                         << " Actual sample rate: " << devSampleRate/(1<<m_settings.m_log2Decim) << "Hz"
                         << " img: " << f_img << "Hz";
             }
-        }
-    }
-
-    if ((m_settings.m_fcPos != settings.m_fcPos) || force)
-    {
-        m_settings.m_fcPos = settings.m_fcPos;
-
-        if (m_sdrPlayThread != 0)
-        {
-            m_sdrPlayThread->setFcPos((int) m_settings.m_fcPos);
-            qDebug() << "SDRPlayInput: set fc pos (enum) to " << (int) m_settings.m_fcPos;
         }
     }
 
@@ -547,7 +624,7 @@ bool SDRPlayInput::applySettings(const SDRPlaySettings& settings, bool forwardCh
     return true;
 }
 
-bool SDRPlayInput::setCenterFrequency(quint64 freq_hz)
+bool SDRPlayInput::setDeviceCenterFrequency(quint64 freq_hz)
 {
     qint64 df = ((qint64)freq_hz * m_settings.m_LOppmTenths) / 10000000LL;
     freq_hz += df;
@@ -556,14 +633,39 @@ bool SDRPlayInput::setCenterFrequency(quint64 freq_hz)
 
     if (r != 0)
     {
-        qWarning("SDRPlayInput::setCenterFrequency: could not frequency to %llu Hz", freq_hz);
+        qWarning("SDRPlayInput::setDeviceCenterFrequency: could not frequency to %llu Hz", freq_hz);
         return false;
     }
     else
     {
-        qWarning("SDRPlayInput::setCenterFrequency: frequency set to %llu Hz", freq_hz);
+        qWarning("SDRPlayInput::setDeviceCenterFrequency: frequency set to %llu Hz", freq_hz);
         return true;
     }
 }
 
+int SDRPlayInput::webapiRunGet(
+        SWGSDRangel::SWGDeviceState& response,
+        QString& errorMessage __attribute__((unused)))
+{
+    m_deviceAPI->getDeviceEngineStateStr(*response.getState());
+    return 200;
+}
+
+int SDRPlayInput::webapiRun(
+        bool run,
+        SWGSDRangel::SWGDeviceState& response,
+        QString& errorMessage __attribute__((unused)))
+{
+    m_deviceAPI->getDeviceEngineStateStr(*response.getState());
+    MsgStartStop *message = MsgStartStop::create(run);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue) // forward to GUI if any
+    {
+        MsgStartStop *msgToGUI = MsgStartStop::create(run);
+        m_guiMessageQueue->push(msgToGUI);
+    }
+
+    return 200;
+}
 

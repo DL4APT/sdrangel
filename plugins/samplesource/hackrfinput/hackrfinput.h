@@ -17,10 +17,11 @@
 #ifndef INCLUDE_HACKRFINPUT_H
 #define INCLUDE_HACKRFINPUT_H
 
-#include <dsp/devicesamplesource.h>
-#include "libhackrf/hackrf.h"
 #include <QString>
+#include <QByteArray>
 
+#include "libhackrf/hackrf.h"
+#include <dsp/devicesamplesource.h>
 #include "hackrf/devicehackrf.h"
 #include "hackrf/devicehackrfparam.h"
 #include "hackrfinputsettings.h"
@@ -72,6 +73,25 @@ public:
 		{ }
 	};
 
+    class MsgStartStop : public Message {
+        MESSAGE_CLASS_DECLARATION
+
+    public:
+        bool getStartStop() const { return m_startStop; }
+
+        static MsgStartStop* create(bool startStop) {
+            return new MsgStartStop(startStop);
+        }
+
+    protected:
+        bool m_startStop;
+
+        MsgStartStop(bool startStop) :
+            Message(),
+            m_startStop(startStop)
+        { }
+    };
+
     class MsgFileRecord : public Message {
         MESSAGE_CLASS_DECLARATION
 
@@ -95,21 +115,48 @@ public:
 	virtual ~HackRFInput();
 	virtual void destroy();
 
+    virtual void init();
 	virtual bool start();
 	virtual void stop();
 
+    virtual QByteArray serialize() const;
+    virtual bool deserialize(const QByteArray& data);
+
+    virtual void setMessageQueueToGUI(MessageQueue *queue) { m_guiMessageQueue = queue; }
 	virtual const QString& getDeviceDescription() const;
 	virtual int getSampleRate() const;
 	virtual quint64 getCenterFrequency() const;
+    virtual void setCenterFrequency(qint64 centerFrequency);
 
 	virtual bool handleMessage(const Message& message);
+
+    virtual int webapiSettingsGet(
+                SWGSDRangel::SWGDeviceSettings& response,
+                QString& errorMessage);
+
+    virtual int webapiSettingsPutPatch(
+                bool force,
+                const QStringList& deviceSettingsKeys,
+                SWGSDRangel::SWGDeviceSettings& response, // query + response
+                QString& errorMessage);
+
+	virtual int webapiRunGet(
+            SWGSDRangel::SWGDeviceState& response,
+            QString& errorMessage);
+
+    virtual int webapiRun(
+            bool run,
+            SWGSDRangel::SWGDeviceState& response,
+            QString& errorMessage);
+
 
 private:
     bool openDevice();
     void closeDevice();
 	bool applySettings(const HackRFInputSettings& settings, bool force);
 //	hackrf_device *open_hackrf_from_sequence(int sequence);
-	void setCenterFrequency(quint64 freq);
+	void setDeviceCenterFrequency(quint64 freq);
+    void webapiFormatDeviceSettings(SWGSDRangel::SWGDeviceSettings& response, const HackRFInputSettings& settings);
 
 	DeviceSourceAPI *m_deviceAPI;
 	QMutex m_mutex;

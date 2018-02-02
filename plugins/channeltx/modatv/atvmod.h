@@ -28,6 +28,7 @@
 #include <stdint.h>
 
 #include "dsp/basebandsamplesource.h"
+#include "channel/channelsourceapi.h"
 #include "dsp/nco.h"
 #include "dsp/interpolator.h"
 #include "dsp/movingaverage.h"
@@ -40,7 +41,7 @@ class DeviceSinkAPI;
 class ThreadedBasebandSampleSource;
 class UpChannelizer;
 
-class ATVMod : public BasebandSampleSource {
+class ATVMod : public BasebandSampleSource, public ChannelSourceAPI {
     Q_OBJECT
 
 public:
@@ -393,6 +394,7 @@ public:
 
     ATVMod(DeviceSinkAPI *deviceAPI);
     ~ATVMod();
+    virtual void destroy() { delete this; }
 
     virtual void pull(Sample& sample);
     virtual void pullAudio(int nbSamples); // this is used for video signal actually
@@ -400,12 +402,24 @@ public:
     virtual void stop();
     virtual bool handleMessage(const Message& cmd);
 
+    virtual void getIdentifier(QString& id) { id = objectName(); }
+    virtual void getTitle(QString& title) { title = m_settings.m_title; }
+    virtual void setName(const QString& name) { setObjectName(name); }
+    virtual QString getName() const { return objectName(); }
+    virtual qint64 getCenterFrequency() const { return m_settings.m_inputFrequencyOffset; }
+
+    virtual QByteArray serialize() const;
+    virtual bool deserialize(const QByteArray& data);
+
     int getEffectiveSampleRate() const { return m_tvSampleRate; };
     double getMagSq() const { return m_movingAverage.average(); }
     void getCameraNumbers(std::vector<int>& numbers);
 
     static void getBaseValues(int outputSampleRate, int linesPerSecond, int& sampleRateUnits, uint32_t& nbPointsPerRateUnit);
     static float getRFBandwidthDivisor(ATVModSettings::ATVModulation modulation);
+
+    static const QString m_channelIdURI;
+    static const QString m_channelId;
 
 signals:
     /**
@@ -454,6 +468,9 @@ private:
     DeviceSinkAPI* m_deviceAPI;
     ThreadedBasebandSampleSource* m_threadedChannelizer;
     UpChannelizer* m_channelizer;
+
+    int m_outputSampleRate;
+    int m_inputFrequencyOffset;
     ATVModSettings m_settings;
 
     NCO m_carrierNco;
@@ -544,6 +561,7 @@ private:
     static const int m_nbBars; //!< number of bars in bar or chessboard patterns
     static const int m_cameraFPSTestNbFrames; //!< number of frames for camera FPS test
 
+    void applyChannelSettings(int outputSampleRate, int inputFrequencyOffset, bool force = false);
     void applySettings(const ATVModSettings& settings, bool force = false);
     void pullFinalize(Complex& ci, Sample& sample);
     void pullVideo(Real& sample);

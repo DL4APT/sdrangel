@@ -45,8 +45,7 @@ NFMModSettings::NFMModSettings() :
 
 void NFMModSettings::resetToDefaults()
 {
-    m_basebandSampleRate = 48000;
-    m_outputSampleRate = 48000;
+    m_afBandwidth = 3000;
     m_inputFrequencyOffset = 0;
     m_rfBandwidth = 12500.0f;
     m_fmDeviation = 5000.0f;
@@ -55,7 +54,11 @@ void NFMModSettings::resetToDefaults()
     m_volumeFactor = 1.0f;
     m_channelMute = false;
     m_playLoop = false;
+    m_ctcssOn = false;
+    m_ctcssIndex = 0;
     m_rgbColor = QColor(255, 0, 0).rgb();
+    m_title = "NFM Modulator";
+    m_modAFInput = NFMModInputAF::NFMModInputNone;
 }
 
 QByteArray NFMModSettings::serialize() const
@@ -80,6 +83,8 @@ QByteArray NFMModSettings::serialize() const
 
     s.writeBool(9, m_ctcssOn);
     s.writeS32(10, m_ctcssIndex);
+    s.writeString(12, m_title);
+    s.writeS32(13, (int) m_modAFInput);
 
     return s.final();
 }
@@ -119,6 +124,15 @@ bool NFMModSettings::deserialize(const QByteArray& data)
         if (m_channelMarker) {
             d.readBlob(11, &bytetmp);
             m_channelMarker->deserialize(bytetmp);
+        }
+
+        d.readString(12, &m_title, "NFM Modulator");
+
+        d.readS32(13, &tmp, 0);
+        if ((tmp < 0) || (tmp > (int) NFMModInputAF::NFMModInputTone)) {
+            m_modAFInput = NFMModInputNone;
+        } else {
+            m_modAFInput = (NFMModInputAF) tmp;
         }
 
         return true;

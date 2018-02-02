@@ -17,9 +17,11 @@
 #ifndef INCLUDE_AMDEMOD_H
 #define INCLUDE_AMDEMOD_H
 
-#include <dsp/basebandsamplesink.h>
 #include <QMutex>
 #include <vector>
+
+#include "dsp/basebandsamplesink.h"
+#include "channel/channelsinkapi.h"
 #include "dsp/nco.h"
 #include "dsp/interpolator.h"
 #include "dsp/movingaverage.h"
@@ -33,7 +35,7 @@ class DeviceSourceAPI;
 class DownChannelizer;
 class ThreadedBasebandSampleSink;
 
-class AMDemod : public BasebandSampleSink {
+class AMDemod : public BasebandSampleSink, public ChannelSinkAPI {
 	Q_OBJECT
 public:
     class MsgConfigureAMDemod : public Message {
@@ -84,11 +86,19 @@ public:
 
     AMDemod(DeviceSourceAPI *deviceAPI);
 	~AMDemod();
+	virtual void destroy() { delete this; }
 
 	virtual void feed(const SampleVector::const_iterator& begin, const SampleVector::const_iterator& end, bool po);
 	virtual void start();
 	virtual void stop();
 	virtual bool handleMessage(const Message& cmd);
+
+    virtual void getIdentifier(QString& id) { id = objectName(); }
+    virtual void getTitle(QString& title) { title = m_settings.m_title; }
+    virtual qint64 getCenterFrequency() const { return m_settings.m_inputFrequencyOffset; }
+
+    virtual QByteArray serialize() const;
+    virtual bool deserialize(const QByteArray& data);
 
 	double getMagSq() const { return m_magsq; }
 	bool getSquelchOpen() const { return m_squelchOpen; }
@@ -103,6 +113,9 @@ public:
         m_magsqCount = 0;
 	}
 
+    static const QString m_channelIdURI;
+    static const QString m_channelId;
+
 private:
 	enum RateState {
 		RSInitialFill,
@@ -113,6 +126,8 @@ private:
     ThreadedBasebandSampleSink* m_threadedChannelizer;
     DownChannelizer* m_channelizer;
 
+    int m_inputSampleRate;
+    int m_inputFrequencyOffset;
     AMDemodSettings m_settings;
 
 	NCO m_nco;
@@ -141,13 +156,14 @@ private:
 
 	QMutex m_settingsMutex;
 
-//	void apply(bool force = false);
+	void applyChannelSettings(int inputSampleRate, int inputFrequencyOffset, bool force = false);
     void applySettings(const AMDemodSettings& settings, bool force = false);
 
 	void processOneSample(Complex &ci)
 	{
-        Real magsq = ci.real() * ci.real() + ci.imag() * ci.imag();
-        magsq /= (1<<30);
+	    Real re = ci.real() / SDR_RX_SCALED;
+	    Real im = ci.imag() / SDR_RX_SCALED;
+        Real magsq = re*re + im*im;
         m_movingAverage.feed(magsq);
         m_magsq = m_movingAverage.average();
         m_magsqSum += magsq;
@@ -194,7 +210,7 @@ private:
 
             Real attack = (m_squelchCount - 0.05f * m_settings.m_audioSampleRate) / (0.05f * m_settings.m_audioSampleRate);
             sample = demod * attack * 2048 * m_settings.m_volume;
-            if (m_settings.m_copyAudioToUDP) m_udpBufferAudio->write(demod * attack * 32768);
+            if (m_settings.m_copyAudioToUDP) m_udpBufferAudio->write(demod * attack * SDR_RX_SCALEF);
 
             m_squelchOpen = true;
         }

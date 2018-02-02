@@ -15,17 +15,21 @@
 ///////////////////////////////////////////////////////////////////////////////////
 
 #include <QtPlugin>
-#include <QAction>
+
 #include "plugin/pluginapi.h"
 #include "util/simpleserializer.h"
-
-#include "filesourcegui.h"
-#include "filesourceplugin.h"
 #include <device/devicesourceapi.h>
+
+#ifdef SERVER_MODE
+#include "filesourceinput.h"
+#else
+#include "filesourcegui.h"
+#endif
+#include "filesourceplugin.h"
 
 const PluginDescriptor FileSourcePlugin::m_pluginDescriptor = {
 	QString("File source input"),
-	QString("3.5.0"),
+	QString("3.11.1"),
 	QString("(c) Edouard Griffiths, F4EXB"),
 	QString("https://github.com/f4exb/sdrangel"),
 	true,
@@ -53,27 +57,38 @@ void FileSourcePlugin::initPlugin(PluginAPI* pluginAPI)
 PluginInterface::SamplingDevices FileSourcePlugin::enumSampleSources()
 {
 	SamplingDevices result;
-	int count = 1;
 
-	for(int i = 0; i < count; i++)
-	{
-		QString displayedName(QString("FileSource[%1]").arg(i));
-
-		result.append(SamplingDevice(displayedName,
-		        m_hardwareID,
-				m_deviceTypeID,
-				QString::null,
-				i));
-	}
+    result.append(SamplingDevice(
+            "FileSource",
+            m_hardwareID,
+            m_deviceTypeID,
+            QString::null,
+            0,
+            PluginInterface::SamplingDevice::BuiltInDevice,
+            true,
+            1,
+            0));
 
 	return result;
 }
 
-PluginInstanceGUI* FileSourcePlugin::createSampleSourcePluginInstanceGUI(const QString& sourceId, QWidget **widget, DeviceSourceAPI *deviceAPI)
+#ifdef SERVER_MODE
+PluginInstanceGUI* FileSourcePlugin::createSampleSourcePluginInstanceGUI(
+        const QString& sourceId __attribute__((unused)),
+        QWidget **widget __attribute__((unused)),
+        DeviceUISet *deviceUISet __attribute__((unused)))
+{
+    return 0;
+}
+#else
+PluginInstanceGUI* FileSourcePlugin::createSampleSourcePluginInstanceGUI(
+        const QString& sourceId,
+        QWidget **widget,
+        DeviceUISet *deviceUISet)
 {
 	if(sourceId == m_deviceTypeID)
 	{
-		FileSourceGui* gui = new FileSourceGui(deviceAPI);
+		FileSourceGui* gui = new FileSourceGui(deviceUISet);
 		*widget = gui;
 		return gui;
 	}
@@ -82,6 +97,7 @@ PluginInstanceGUI* FileSourcePlugin::createSampleSourcePluginInstanceGUI(const Q
 		return 0;
 	}
 }
+#endif
 
 DeviceSampleSource *FileSourcePlugin::createSampleSourcePluginInstanceInput(const QString& sourceId, DeviceSourceAPI *deviceAPI)
 {

@@ -21,7 +21,8 @@
 #include <QMutex>
 #include <vector>
 
-#include <dsp/basebandsamplesink.h>
+#include "dsp/basebandsamplesink.h"
+#include "channel/channelsinkapi.h"
 #include "dsp/ncof.h"
 #include "dsp/interpolator.h"
 #include "dsp/fftfilt.h"
@@ -38,7 +39,7 @@ class DeviceSourceAPI;
 class ThreadedBasebandSampleSink;
 class DownChannelizer;
 
-class SSBDemod : public BasebandSampleSink {
+class SSBDemod : public BasebandSampleSink, public ChannelSinkAPI {
 public:
     class MsgConfigureSSBDemod : public Message {
         MESSAGE_CLASS_DECLARATION
@@ -88,6 +89,7 @@ public:
 
 	SSBDemod(DeviceSourceAPI *deviceAPI);
 	virtual ~SSBDemod();
+	virtual void destroy() { delete this; }
 	void setSampleSink(BasebandSampleSink* sampleSink) { m_sampleSink = sampleSink; }
 
 	void configure(MessageQueue* messageQueue,
@@ -110,7 +112,14 @@ public:
 	virtual void stop();
 	virtual bool handleMessage(const Message& cmd);
 
-	double getMagSq() const { return m_magsq; }
+    virtual void getIdentifier(QString& id) { id = objectName(); }
+    virtual void getTitle(QString& title) { title = m_settings.m_title; }
+    virtual qint64 getCenterFrequency() const { return m_settings.m_inputFrequencyOffset; }
+
+    virtual QByteArray serialize() const;
+    virtual bool deserialize(const QByteArray& data);
+
+    double getMagSq() const { return m_magsq; }
 	bool getAudioActive() const { return m_audioActive; }
 
     void getMagSqLevels(double& avg, double& peak, int& nbSamples)
@@ -123,6 +132,9 @@ public:
         m_magsqPeak = 0.0f;
         m_magsqCount = 0;
     }
+
+    static const QString m_channelIdURI;
+    static const QString m_channelId;
 
 private:
 	class MsgConfigureSSBDemodPrivate : public Message {
@@ -229,8 +241,8 @@ private:
 	int m_spanLog2;
 	fftfilt::cmplx m_sum;
 	int m_undersampleCount;
-	int m_sampleRate;
-	int m_frequency;
+	int m_inputSampleRate;
+	int m_inputFrequencyOffset;
 	bool m_audioBinaual;
 	bool m_audioFlipChannels;
 	bool m_usb;
@@ -249,8 +261,9 @@ private:
     bool m_audioActive;         //!< True if an audio signal is produced (no AGC or AGC and above threshold)
 
 	NCOF m_nco;
-	Interpolator m_interpolator;
-	Real m_sampleDistanceRemain;
+    Interpolator m_interpolator;
+    Real m_interpolatorDistance;
+    Real m_interpolatorDistanceRemain;
 	fftfilt* SSBFilter;
 	fftfilt* DSBFilter;
 
@@ -261,9 +274,12 @@ private:
 	uint m_audioBufferFill;
 	AudioFifo m_audioFifo;
 	quint32 m_audioSampleRate;
+	UDPSink<qint16> *m_udpBufferAudio;
+	static const int m_udpBlockSize;
 
 	QMutex m_settingsMutex;
 
+	void applyChannelSettings(int inputSampleRate, int inputFrequencyOffset, bool force = false);
 	void applySettings(const SSBDemodSettings& settings, bool force = false);
 };
 

@@ -4,13 +4,18 @@ set(sdrgui_SOURCES
     mainwindow.cpp
     gui/aboutdialog.cpp
     gui/addpresetdialog.cpp
-    gui/basicchannelsettingswidget.cpp
     gui/basicchannelsettingsdialog.cpp
     gui/buttonswitch.cpp
     gui/channelwindow.cpp
     gui/clickablelabel.cpp
     gui/colormapper.cpp
+    gui/commanditem.cpp
+    gui/commandkeyreceiver.cpp
+    gui/commandoutputdialog.cpp
     gui/cwkeyergui.cpp
+    gui/editcommanddialog.cpp
+    gui/externalclockbutton.cpp
+    gui/externalclockdialog.cpp
     gui/glscope.cpp
     gui/glscopegui.cpp
     gui/glscopeng.cpp
@@ -23,14 +28,17 @@ set(sdrgui_SOURCES
     gui/glspectrumgui.cpp
     gui/indicator.cpp
     gui/levelmeter.cpp
+    gui/loggingdialog.cpp
     gui/mypositiondialog.cpp
     gui/pluginsdialog.cpp
     gui/audiodialog.cpp
     gui/presetitem.cpp
     gui/rollupwidget.cpp
     gui/samplingdevicecontrol.cpp
+    gui/samplingdevicedialog.cpp
     gui/scale.cpp
     gui/scaleengine.cpp
+    gui/tickedslider.cpp
     gui/transverterbutton.cpp
     gui/transverterdialog.cpp
     gui/valuedial.cpp
@@ -43,25 +51,26 @@ set(sdrgui_SOURCES
     dsp/spectrumscopecombovis.cpp
     dsp/spectrumscopengcombovis.cpp
     
-    device/devicesourceapi.cpp
-    device/devicesinkapi.cpp
     device/deviceuiset.cpp
     
-    plugin/pluginapi.cpp
-    plugin/pluginmanager.cpp    
-    plugin/plugininterface.cpp
+    webapi/webapiadaptergui.cpp
 )
 
 set(sdrgui_HEADERS
     mainwindow.h
     gui/aboutdialog.h
     gui/addpresetdialog.h
-    gui/basicchannelsettingswidget.h
     gui/basicchannelsettingsdialog.h
     gui/buttonswitch.h
     gui/channelwindow.h
     gui/colormapper.h
+    gui/commanditem.h
+    gui/commandkeyreceiver.h
+    gui/commandoutputdialog.h
     gui/cwkeyergui.h
+    gui/editcommanddialog.h
+    gui/externalclockbutton.h
+    gui/externalclockdialog.h
     gui/glscope.h
     gui/glscopegui.h
     gui/glscopeng.h
@@ -73,7 +82,8 @@ set(sdrgui_HEADERS
     gui/glspectrum.h
     gui/glspectrumgui.h
     gui/indicator.h
-    gui/levelmeter.h    
+    gui/levelmeter.h
+    gui/loggingdialog.h    
     gui/mypositiondialog.h
     gui/physicalunit.h
     gui/pluginsdialog.h
@@ -81,8 +91,10 @@ set(sdrgui_HEADERS
     gui/presetitem.h
     gui/rollupwidget.h
     gui/samplingdevicecontrol.h
+    gui/samplingdevicedialog.h
     gui/scale.h
     gui/scaleengine.h
+    gui/tickedslider.h
     gui/transverterbutton.h
     gui/transverterdialog.h    
     gui/valuedial.h
@@ -95,13 +107,9 @@ set(sdrgui_HEADERS
     dsp/spectrumscopecombovis.h
     dsp/spectrumscopengcombovis.h
     
-    device/devicesourceapi.h
-    device/devicesinkapi.h
     device/deviceuiset.h
     
-    plugin/pluginapi.h
-    plugin/pluginmanager.h
-    plugin/plugininterface.h
+    webapi/webapiadaptergui.h
 )
 
 set(sdrgui_SOURCES
@@ -113,9 +121,11 @@ set(sdrgui_FORMS
     mainwindow.ui
     gui/aboutdialog.ui
     gui/addpresetdialog.ui
-    gui/basicchannelsettingswidget.ui
     gui/basicchannelsettingsdialog.ui
+    gui/commandoutputdialog.ui
     gui/cwkeyergui.ui
+    gui/editcommanddialog.ui
+    gui/externalclockdialog.ui
     gui/glscopegui.ui
     gui/glscopenggui.ui
     gui/glscopemultigui.ui
@@ -123,8 +133,10 @@ set(sdrgui_FORMS
     gui/pluginsdialog.ui
     gui/audiodialog.ui
     gui/samplingdevicecontrol.ui
+    gui/samplingdevicedialog.ui
     gui/myposdialog.ui
     gui/transverterdialog.ui
+    gui/loggingdialog.ui
 )
 
 set(sdrgui_RESOURCES
@@ -151,6 +163,9 @@ add_library(sdrgui SHARED
 include_directories(
     .
     ${CMAKE_SOURCE_DIR}/sdrbase
+    ${CMAKE_SOURCE_DIR}/logging
+    ${CMAKE_SOURCE_DIR}/httpserver
+    ${CMAKE_SOURCE_DIR}/swagger/sdrangel/code/qt5/client    
     ${CMAKE_CURRENT_BINARY_DIR}
     ${OPENGL_INCLUDE_DIR}
 )
@@ -159,6 +174,7 @@ target_link_libraries(sdrgui
     ${QT_LIBRARIES}
     ${OPENGL_LIBRARIES}
     sdrbase
+    logging
 )
 
 set_target_properties(sdrgui PROPERTIES DEFINE_SYMBOL "sdrangel_EXPORTS")

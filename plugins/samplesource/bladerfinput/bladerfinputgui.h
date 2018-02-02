@@ -25,7 +25,7 @@
 
 #include "bladerfinput.h"
 
-class DeviceSourceAPI;
+class DeviceUISet;
 
 namespace Ui {
 	class BladerfInputGui;
@@ -35,7 +35,7 @@ class BladerfInputGui : public QWidget, public PluginInstanceGUI {
 	Q_OBJECT
 
 public:
-	explicit BladerfInputGui(DeviceSourceAPI *deviceAPI, QWidget* parent = NULL);
+	explicit BladerfInputGui(DeviceUISet *deviceUISet, QWidget* parent = 0);
 	virtual ~BladerfInputGui();
 	virtual void destroy();
 
@@ -53,8 +53,9 @@ public:
 private:
 	Ui::BladerfInputGui* ui;
 
-	DeviceSourceAPI* m_deviceAPI;
+	DeviceUISet* m_deviceUISet;
 	bool m_forceSettings;
+	bool m_doApplySettings;
 	BladeRFInputSettings m_settings;
 	QTimer m_updateTimer;
 	QTimer m_statusTimer;
@@ -69,6 +70,7 @@ private:
 	void sendSettings();
 	unsigned int getXb200Index(bool xb_200, bladerf_xb200_path xb200Path, bladerf_xb200_filter xb200Filter);
 	void updateSampleRateAndFrequency();
+	void blockApplySettings(bool block);
 
 private slots:
     void handleInputMessages();

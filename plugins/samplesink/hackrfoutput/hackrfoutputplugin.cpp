@@ -14,22 +14,23 @@
 // along with this program. If not, see <http://www.gnu.org/licenses/>.          //
 ///////////////////////////////////////////////////////////////////////////////////
 
-#include "hackrfoutputplugin.h"
-
 #include <QtPlugin>
-#include <QAction>
 #include "libhackrf/hackrf.h"
 
 #include "device/devicesourceapi.h"
-
 #include "plugin/pluginapi.h"
 #include "util/simpleserializer.h"
 
+#ifdef SERVER_MODE
+#include "hackrfoutput.h"
+#else
 #include "hackrfoutputgui.h"
+#endif
+#include "hackrfoutputplugin.h"
 
 const PluginDescriptor HackRFOutputPlugin::m_pluginDescriptor = {
 	QString("HackRF Output"),
-	QString("3.7.4"),
+	QString("3.9.0"),
 	QString("(c) Edouard Griffiths, F4EXB"),
 	QString("https://github.com/f4exb/sdrangel"),
 	true,
@@ -97,7 +98,11 @@ PluginInterface::SamplingDevices HackRFOutputPlugin::enumSampleSinks()
 			        m_hardwareID,
 			        m_deviceTypeID,
 					serial_str,
-					i));
+					i,
+					PluginInterface::SamplingDevice::PhysicalDevice,
+					false,
+					1,
+					0));
 
 			qDebug("HackRFOutputPlugin::enumSampleSinks: enumerated HackRF device #%d", i);
 
@@ -116,11 +121,23 @@ PluginInterface::SamplingDevices HackRFOutputPlugin::enumSampleSinks()
 	return result;
 }
 
-PluginInstanceGUI* HackRFOutputPlugin::createSampleSinkPluginInstanceGUI(const QString& sinkId, QWidget **widget, DeviceSinkAPI *deviceAPI)
+#ifdef SERVER_MODE
+PluginInstanceGUI* HackRFOutputPlugin::createSampleSinkPluginInstanceGUI(
+        const QString& sinkId __attribute__((unused)),
+        QWidget **widget __attribute__((unused)),
+        DeviceUISet *deviceUISet __attribute__((unused)))
+{
+    return 0;
+}
+#else
+PluginInstanceGUI* HackRFOutputPlugin::createSampleSinkPluginInstanceGUI(
+        const QString& sinkId,
+        QWidget **widget,
+        DeviceUISet *deviceUISet)
 {
 	if(sinkId == m_deviceTypeID)
 	{
-		HackRFOutputGui* gui = new HackRFOutputGui(deviceAPI);
+		HackRFOutputGui* gui = new HackRFOutputGui(deviceUISet);
 		*widget = gui;
 		return gui;
 	}
@@ -129,6 +146,7 @@ PluginInstanceGUI* HackRFOutputPlugin::createSampleSinkPluginInstanceGUI(const Q
 		return 0;
 	}
 }
+#endif
 
 DeviceSampleSink* HackRFOutputPlugin::createSampleSinkPluginInstanceOutput(const QString& sinkId, DeviceSinkAPI *deviceAPI)
 {

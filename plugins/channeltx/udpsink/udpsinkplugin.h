@@ -21,7 +21,8 @@
 #include <QObject>
 #include "plugin/plugininterface.h"
 
-class DeviceSinkAPI;
+class DeviceUISet;
+class BasebandSampleSource;
 
 class UDPSinkPlugin : public QObject, PluginInterface {
 	Q_OBJECT
@@ -34,15 +35,14 @@ public:
 	const PluginDescriptor& getPluginDescriptor() const;
 	void initPlugin(PluginAPI* pluginAPI);
 
-	PluginInstanceGUI* createTxChannel(const QString& channelName, DeviceSinkAPI *deviceAPI);
+	virtual PluginInstanceGUI* createTxChannelGUI(DeviceUISet *deviceUISet, BasebandSampleSource *txChannel);
+	virtual BasebandSampleSource* createTxChannelBS(DeviceSinkAPI *deviceAPI);
+	virtual ChannelSourceAPI* createTxChannelCS(DeviceSinkAPI *deviceAPI);
 
 private:
 	static const PluginDescriptor m_pluginDescriptor;
 
 	PluginAPI* m_pluginAPI;
-
-private slots:
-	void createInstanceUDPSink(DeviceSinkAPI *deviceAPI);
 };
 
 #endif // INCLUDE_UDPSINKPLUGIN_H

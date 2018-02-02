@@ -18,9 +18,11 @@
 #ifndef INCLUDE_BFMDEMOD_H
 #define INCLUDE_BFMDEMOD_H
 
-#include <dsp/basebandsamplesink.h>
 #include <QMutex>
 #include <vector>
+
+#include "dsp/basebandsamplesink.h"
+#include "channel/channelsinkapi.h"
 #include "dsp/nco.h"
 #include "dsp/interpolator.h"
 #include "dsp/lowpass.h"
@@ -42,7 +44,7 @@ class DeviceSourceAPI;
 class ThreadedBasebandSampleSink;
 class DownChannelizer;
 
-class BFMDemod : public BasebandSampleSink {
+class BFMDemod : public BasebandSampleSink, public ChannelSinkAPI {
 public:
     class MsgConfigureBFMDemod : public Message {
         MESSAGE_CLASS_DECLARATION
@@ -112,13 +114,21 @@ public:
 
 	BFMDemod(DeviceSourceAPI *deviceAPI);
 	virtual ~BFMDemod();
+	virtual void destroy() { delete this; }
 	void setSampleSink(BasebandSampleSink* sampleSink) { m_sampleSink = sampleSink; }
 
-	int getSampleRate() const { return m_settings.m_inputSampleRate; }
+	int getSampleRate() const { return m_inputSampleRate; }
 	virtual void feed(const SampleVector::const_iterator& begin, const SampleVector::const_iterator& end, bool po);
 	virtual void start();
 	virtual void stop();
 	virtual bool handleMessage(const Message& cmd);
+
+    virtual void getIdentifier(QString& id) { id = objectName(); }
+    virtual void getTitle(QString& title) { title = m_settings.m_title; }
+    virtual qint64 getCenterFrequency() const { return m_settings.m_inputFrequencyOffset; }
+
+    virtual QByteArray serialize() const;
+    virtual bool deserialize(const QByteArray& data);
 
 	double getMagSq() const { return m_magsq; }
 
@@ -144,8 +154,8 @@ public:
 
     RDSParser& getRDSParser() { return m_rdsParser; }
 
-private slots:
-    void channelSampleRateChanged();
+    static const QString m_channelIdURI;
+    static const QString m_channelId;
 
 private:
 	enum RateState {
@@ -157,6 +167,8 @@ private:
     ThreadedBasebandSampleSink* m_threadedChannelizer;
     DownChannelizer* m_channelizer;
 
+    int m_inputSampleRate;
+    int m_inputFrequencyOffset;
     BFMDemodSettings m_settings;
 
 	NCO m_nco;
@@ -213,6 +225,7 @@ private:
 
     static const int m_udpBlockSize;
 
+    void applyChannelSettings(int inputSampleRate, int inputFrequencyOffset, bool force = false);
 	void applySettings(const BFMDemodSettings& settings, bool force = false);
 };
 

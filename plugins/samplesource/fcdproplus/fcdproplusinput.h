@@ -17,12 +17,13 @@
 #ifndef INCLUDE_FCDINPUT_H
 #define INCLUDE_FCDINPUT_H
 
-#include <dsp/devicesamplesource.h>
+#include <QString>
+#include <QByteArray>
+#include <inttypes.h>
 
+#include <dsp/devicesamplesource.h>
 #include "fcdproplussettings.h"
 #include "fcdhid.h"
-#include <QString>
-#include <inttypes.h>
 
 struct fcd_buffer {
 	void *start;
@@ -58,6 +59,25 @@ public:
 		{ }
 	};
 
+    class MsgStartStop : public Message {
+        MESSAGE_CLASS_DECLARATION
+
+    public:
+        bool getStartStop() const { return m_startStop; }
+
+        static MsgStartStop* create(bool startStop) {
+            return new MsgStartStop(startStop);
+        }
+
+    protected:
+        bool m_startStop;
+
+        MsgStartStop(bool startStop) :
+            Message(),
+            m_startStop(startStop)
+        { }
+    };
+
     class MsgFileRecord : public Message {
         MESSAGE_CLASS_DECLARATION
 
@@ -81,16 +101,31 @@ public:
 	virtual ~FCDProPlusInput();
 	virtual void destroy();
 
+    virtual void init();
 	virtual bool start();
 	virtual void stop();
 
+    virtual QByteArray serialize() const;
+    virtual bool deserialize(const QByteArray& data);
+
+    virtual void setMessageQueueToGUI(MessageQueue *queue) { m_guiMessageQueue = queue; }
 	virtual const QString& getDeviceDescription() const;
 	virtual int getSampleRate() const;
 	virtual quint64 getCenterFrequency() const;
+    virtual void setCenterFrequency(qint64 centerFrequency);
 
 	virtual bool handleMessage(const Message& message);
 
-	void set_center_freq(double freq);
+    virtual int webapiRunGet(
+            SWGSDRangel::SWGDeviceState& response,
+            QString& errorMessage);
+
+    virtual int webapiRun(
+            bool run,
+            SWGSDRangel::SWGDeviceState& response,
+            QString& errorMessage);
+
+    void set_center_freq(double freq);
 	void set_bias_t(bool on);
 	void set_lna_gain(bool on);
 	void set_mixer_gain(bool on);

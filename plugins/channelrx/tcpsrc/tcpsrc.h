@@ -4,7 +4,8 @@
 #include <QMutex>
 #include <QHostAddress>
 
-#include <dsp/basebandsamplesink.h>
+#include "dsp/basebandsamplesink.h"
+#include "channel/channelsinkapi.h"
 #include "dsp/nco.h"
 #include "dsp/fftfilt.h"
 #include "dsp/interpolator.h"
@@ -21,7 +22,7 @@ class DeviceSourceAPI;
 class ThreadedBasebandSampleSink;
 class DownChannelizer;
 
-class TCPSrc : public BasebandSampleSink {
+class TCPSrc : public BasebandSampleSink, public ChannelSinkAPI {
 	Q_OBJECT
 
 public:
@@ -103,6 +104,7 @@ public:
 
 	TCPSrc(DeviceSourceAPI* m_deviceAPI);
 	virtual ~TCPSrc();
+	virtual void destroy() { delete this; }
 	void setSpectrum(BasebandSampleSink* spectrum) { m_spectrum = spectrum; }
 
 	void setSpectrum(MessageQueue* messageQueue, bool enabled);
@@ -112,6 +114,16 @@ public:
 	virtual void start();
 	virtual void stop();
 	virtual bool handleMessage(const Message& cmd);
+
+    virtual void getIdentifier(QString& id) { id = objectName(); }
+    virtual void getTitle(QString& title) { title = m_settings.m_title; }
+    virtual qint64 getCenterFrequency() const { return m_settings.m_inputFrequencyOffset; }
+
+    virtual QByteArray serialize() const;
+    virtual bool deserialize(const QByteArray& data);
+
+    static const QString m_channelIdURI;
+    static const QString m_channelId;
 
 protected:
 	class MsgTCPSrcSpectrum : public Message {
@@ -153,10 +165,12 @@ protected:
 		{ }
 	};
 
-    TCPSrcSettings m_settings;
-    DeviceSourceAPI* m_deviceAPI;
+	DeviceSourceAPI* m_deviceAPI;
     ThreadedBasebandSampleSink* m_threadedChannelizer;
     DownChannelizer* m_channelizer;
+
+    TCPSrcSettings m_settings;
+    int m_absoluteFrequencyOffset;
 
     int m_inputSampleRate;
 

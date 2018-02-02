@@ -34,8 +34,6 @@ struct UDPSinkSettings
         FormatNone
     };
 
-    int m_basebandSampleRate;
-    Real m_outputSampleRate;
     SampleFormat m_sampleFormat;
     Real m_inputSampleRate;
     qint64 m_inputFrequencyOffset;
@@ -55,6 +53,8 @@ struct UDPSinkSettings
 
     QString m_udpAddress;
     uint16_t m_udpPort;
+
+    QString m_title;
 
     Serializable *m_channelMarker;
     Serializable *m_spectrumGUI;

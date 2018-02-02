@@ -20,6 +20,9 @@
 #include <errno.h>
 #include <QDebug>
 
+#include "SWGDeviceSettings.h"
+#include "SWGDeviceState.h"
+
 #include "util/simpleserializer.h"
 #include "dsp/dspcommands.h"
 #include "dsp/dspengine.h"
@@ -31,6 +34,7 @@
 #include "bladerfinputthread.h"
 
 MESSAGE_CLASS_DEFINITION(BladerfInput::MsgConfigureBladerf, Message)
+MESSAGE_CLASS_DEFINITION(BladerfInput::MsgStartStop, Message)
 MESSAGE_CLASS_DEFINITION(BladerfInput::MsgFileRecord, Message)
 
 BladerfInput::BladerfInput(DeviceSourceAPI *deviceAPI) :
@@ -127,6 +131,11 @@ bool BladerfInput::openDevice()
     return true;
 }
 
+void BladerfInput::init()
+{
+    applySettings(m_settings, true);
+}
+
 bool BladerfInput::start()
 {
 //	QMutexLocker mutexLocker(&m_mutex);
@@ -198,6 +207,33 @@ void BladerfInput::stop()
 	m_running = false;
 }
 
+QByteArray BladerfInput::serialize() const
+{
+    return m_settings.serialize();
+}
+
+bool BladerfInput::deserialize(const QByteArray& data)
+{
+    bool success = true;
+
+    if (!m_settings.deserialize(data))
+    {
+        m_settings.resetToDefaults();
+        success = false;
+    }
+
+    MsgConfigureBladerf* message = MsgConfigureBladerf::create(m_settings, true);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue)
+    {
+        MsgConfigureBladerf* messageToGUI = MsgConfigureBladerf::create(m_settings, true);
+        m_guiMessageQueue->push(messageToGUI);
+    }
+
+    return success;
+}
+
 const QString& BladerfInput::getDeviceDescription() const
 {
 	return m_deviceDescription;
@@ -212,6 +248,21 @@ int BladerfInput::getSampleRate() const
 quint64 BladerfInput::getCenterFrequency() const
 {
 	return m_settings.m_centerFrequency;
+}
+
+void BladerfInput::setCenterFrequency(qint64 centerFrequency)
+{
+    BladeRFInputSettings settings = m_settings;
+    settings.m_centerFrequency = centerFrequency;
+
+    MsgConfigureBladerf* message = MsgConfigureBladerf::create(settings, false);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue)
+    {
+        MsgConfigureBladerf* messageToGUI = MsgConfigureBladerf::create(settings, false);
+        m_guiMessageQueue->push(messageToGUI);
+    }
 }
 
 bool BladerfInput::handleMessage(const Message& message)
@@ -241,6 +292,27 @@ bool BladerfInput::handleMessage(const Message& message)
 
         return true;
     }
+    else if (MsgStartStop::match(message))
+    {
+        MsgStartStop& cmd = (MsgStartStop&) message;
+        qDebug() << "BladerfInput::handleMessage: MsgStartStop: " << (cmd.getStartStop() ? "start" : "stop");
+
+        if (cmd.getStartStop())
+        {
+            if (m_deviceAPI->initAcquisition())
+            {
+                m_deviceAPI->startAcquisition();
+                DSPEngine::instance()->startAudioOutput();
+            }
+        }
+        else
+        {
+            m_deviceAPI->stopAcquisition();
+            DSPEngine::instance()->stopAudioOutput();
+        }
+
+        return true;
+    }
 	else
 	{
 		return false;
@@ -254,14 +326,10 @@ bool BladerfInput::applySettings(const BladeRFInputSettings& settings, bool forc
 
 	qDebug() << "BladerfInput::applySettings: m_dev: " << m_dev;
 
-	if (m_settings.m_dcBlock != settings.m_dcBlock)
+	if ((m_settings.m_dcBlock != settings.m_dcBlock) ||
+	    (m_settings.m_iqCorrection != settings.m_iqCorrection) || force)
 	{
 		m_settings.m_dcBlock = settings.m_dcBlock;
-		m_deviceAPI->configureCorrections(m_settings.m_dcBlock, m_settings.m_iqCorrection);
-	}
-
-	if (m_settings.m_iqCorrection != settings.m_iqCorrection)
-	{
 		m_settings.m_iqCorrection = settings.m_iqCorrection;
 		m_deviceAPI->configureCorrections(m_settings.m_dcBlock, m_settings.m_iqCorrection);
 	}
@@ -446,69 +514,80 @@ bool BladerfInput::applySettings(const BladeRFInputSettings& settings, bool forc
 		}
 	}
 
-	if ((m_settings.m_log2Decim != settings.m_log2Decim) || force)
-	{
-		m_settings.m_log2Decim = settings.m_log2Decim;
-		forwardChange = true;
-
-		if (m_bladerfThread != 0)
-		{
-			m_bladerfThread->setLog2Decimation(m_settings.m_log2Decim);
-			qDebug() << "BladerfInput::applySettings: set decimation to " << (1<<m_settings.m_log2Decim);
-		}
-	}
-
 	if ((m_settings.m_fcPos != settings.m_fcPos) || force)
 	{
-		m_settings.m_fcPos = settings.m_fcPos;
-
 		if (m_bladerfThread != 0)
 		{
-			m_bladerfThread->setFcPos((int) m_settings.m_fcPos);
-			qDebug() << "BladerfInput::applySettings: set fc pos (enum) to " << (int) m_settings.m_fcPos;
+			m_bladerfThread->setFcPos((int) settings.m_fcPos);
+			qDebug() << "BladerfInput::applySettings: set fc pos (enum) to " << (int) settings.m_fcPos;
 		}
 	}
 
-	if (m_settings.m_centerFrequency != settings.m_centerFrequency)
-	{
-		forwardChange = true;
-	}
+    if ((m_settings.m_log2Decim != settings.m_log2Decim) || force)
+    {
+        m_settings.m_log2Decim = settings.m_log2Decim;
+        forwardChange = true;
 
-	m_settings.m_centerFrequency = settings.m_centerFrequency;
+        if (m_bladerfThread != 0)
+        {
+            m_bladerfThread->setLog2Decimation(m_settings.m_log2Decim);
+            qDebug() << "BladerfInput::applySettings: set decimation to " << (1<<m_settings.m_log2Decim);
+        }
+    }
 
-	qint64 deviceCenterFrequency = m_settings.m_centerFrequency;
-	qint64 f_img = deviceCenterFrequency;
-	qint64 f_cut = deviceCenterFrequency + m_settings.m_bandwidth/2;
+    if ((m_settings.m_centerFrequency != settings.m_centerFrequency)
+        || (m_settings.m_fcPos != settings.m_fcPos)
+        || (m_settings.m_log2Decim != settings.m_log2Decim) || force)
+    {
+        m_settings.m_centerFrequency = settings.m_centerFrequency;
+        m_settings.m_log2Decim = settings.m_log2Decim;
+        m_settings.m_fcPos = settings.m_fcPos;
 
-	if ((m_settings.m_log2Decim == 0) || (m_settings.m_fcPos == BladeRFInputSettings::FC_POS_CENTER))
-	{
-		deviceCenterFrequency = m_settings.m_centerFrequency;
-		f_img = deviceCenterFrequency;
-		f_cut = deviceCenterFrequency + m_settings.m_bandwidth/2;
-	}
-	else
-	{
-		if (m_settings.m_fcPos == BladeRFInputSettings::FC_POS_INFRA)
-		{
-			deviceCenterFrequency = m_settings.m_centerFrequency + (m_settings.m_devSampleRate / 4);
-			f_img = deviceCenterFrequency + m_settings.m_devSampleRate/2;
-			f_cut = deviceCenterFrequency + m_settings.m_bandwidth/2;
-		}
-		else if (m_settings.m_fcPos == BladeRFInputSettings::FC_POS_SUPRA)
-		{
-			deviceCenterFrequency = m_settings.m_centerFrequency - (m_settings.m_devSampleRate / 4);
-			f_img = deviceCenterFrequency - m_settings.m_devSampleRate/2;
-			f_cut = deviceCenterFrequency - m_settings.m_bandwidth/2;
-		}
-	}
+        qint64 deviceCenterFrequency = m_settings.m_centerFrequency;
+        deviceCenterFrequency = deviceCenterFrequency < 0 ? 0 : deviceCenterFrequency;
+        qint64 f_img = deviceCenterFrequency;
+        qint64 f_cut = deviceCenterFrequency + m_settings.m_bandwidth/2;
+        quint32 devSampleRate = m_settings.m_devSampleRate;
 
-	if (m_dev != NULL)
-	{
-		if (bladerf_set_frequency( m_dev, BLADERF_MODULE_RX, deviceCenterFrequency ) != 0)
-		{
-			qDebug("BladerfInput::applySettings: bladerf_set_frequency(%lld) failed", m_settings.m_centerFrequency);
-		}
-	}
+        forwardChange = true;
+
+        if ((m_settings.m_log2Decim == 0) || (settings.m_fcPos == BladeRFInputSettings::FC_POS_CENTER))
+        {
+            f_img = deviceCenterFrequency;
+        }
+        else
+        {
+            if (settings.m_fcPos == BladeRFInputSettings::FC_POS_INFRA)
+            {
+                deviceCenterFrequency += (devSampleRate / 4);
+                f_img = deviceCenterFrequency + devSampleRate/2;
+            }
+            else if (settings.m_fcPos == BladeRFInputSettings::FC_POS_SUPRA)
+            {
+                deviceCenterFrequency -= (devSampleRate / 4);
+                f_img = deviceCenterFrequency - devSampleRate/2;
+            }
+        }
+
+        if (m_dev != 0)
+        {
+            if (bladerf_set_frequency( m_dev, BLADERF_MODULE_RX, deviceCenterFrequency ) != 0)
+            {
+                qDebug("BladerfInput::applySettings: bladerf_set_frequency(%lld) failed", m_settings.m_centerFrequency);
+            }
+            else
+            {
+                qDebug() << "BladerfInput::applySettings: center freq: " << m_settings.m_centerFrequency << " Hz"
+                        << " device center freq: " << deviceCenterFrequency << " Hz"
+                        << " device sample rate: " << m_settings.m_devSampleRate << "S/s"
+                        << " Actual sample rate: " << m_settings.m_devSampleRate/(1<<m_settings.m_log2Decim) << "S/s"
+                        << " BW: " << m_settings.m_bandwidth << "Hz"
+                        << " img: " << f_img << "Hz"
+                        << " cut: " << f_cut << "Hz"
+                        << " img - cut: " << f_img - f_cut;
+            }
+        }
+    }
 
 	if (forwardChange)
 	{
@@ -517,15 +596,6 @@ bool BladerfInput::applySettings(const BladeRFInputSettings& settings, bool forc
         m_fileSink->handleMessage(*notif); // forward to file sink
         m_deviceAPI->getDeviceEngineInputMessageQueue()->push(notif);
 	}
-
-	qDebug() << "BladerfInput::applySettings: center freq: " << m_settings.m_centerFrequency << " Hz"
-			<< " device center freq: " << deviceCenterFrequency << " Hz"
-			<< " device sample rate: " << m_settings.m_devSampleRate << "S/s"
-			<< " Actual sample rate: " << m_settings.m_devSampleRate/(1<<m_settings.m_log2Decim) << "S/s"
-			<< " BW: " << m_settings.m_bandwidth << "Hz"
-			<< " img: " << f_img << "Hz"
-			<< " cut: " << f_cut << "Hz"
-			<< " img - cut: " << f_img - f_cut;
 
 	return true;
 }
@@ -544,6 +614,32 @@ bladerf_lna_gain BladerfInput::getLnaGain(int lnaGain)
 	{
 		return BLADERF_LNA_GAIN_BYPASS;
 	}
+}
+
+int BladerfInput::webapiRunGet(
+        SWGSDRangel::SWGDeviceState& response,
+        QString& errorMessage __attribute__((unused)))
+{
+    m_deviceAPI->getDeviceEngineStateStr(*response.getState());
+    return 200;
+}
+
+int BladerfInput::webapiRun(
+        bool run,
+        SWGSDRangel::SWGDeviceState& response,
+        QString& errorMessage __attribute__((unused)))
+{
+    m_deviceAPI->getDeviceEngineStateStr(*response.getState());
+    MsgStartStop *message = MsgStartStop::create(run);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue) // forward to GUI if any
+    {
+        MsgStartStop *msgToGUI = MsgStartStop::create(run);
+        m_guiMessageQueue->push(msgToGUI);
+    }
+
+    return 200;
 }
 
 //struct bladerf *BladerfInput::open_bladerf_from_serial(const char *serial)

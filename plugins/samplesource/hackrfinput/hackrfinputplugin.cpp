@@ -14,10 +14,8 @@
 // along with this program. If not, see <http://www.gnu.org/licenses/>.          //
 ///////////////////////////////////////////////////////////////////////////////////
 
-#include "../hackrfinput/hackrfinputplugin.h"
 
 #include <QtPlugin>
-#include <QAction>
 #include "libhackrf/hackrf.h"
 
 #include <device/devicesourceapi.h>
@@ -25,11 +23,16 @@
 #include "plugin/pluginapi.h"
 #include "util/simpleserializer.h"
 
-#include "../hackrfinput/hackrfinputgui.h"
+#ifdef SERVER_MODE
+#include "hackrfinput.h"
+#else
+#include "hackrfinputgui.h"
+#endif
+#include "hackrfinputplugin.h"
 
 const PluginDescriptor HackRFInputPlugin::m_pluginDescriptor = {
 	QString("HackRF Input"),
-	QString("3.5.2"),
+	QString("3.11.0"),
 	QString("(c) Edouard Griffiths, F4EXB"),
 	QString("https://github.com/f4exb/sdrangel"),
 	true,
@@ -98,7 +101,11 @@ PluginInterface::SamplingDevices HackRFInputPlugin::enumSampleSources()
 			        m_hardwareID,
 			        m_deviceTypeID,
 					serial_str,
-					i));
+					i,
+					PluginInterface::SamplingDevice::PhysicalDevice,
+					true,
+					1,
+					0));
 
 			qDebug("HackRFPlugin::enumSampleSources: enumerated HackRF device #%d", i);
 
@@ -117,11 +124,23 @@ PluginInterface::SamplingDevices HackRFInputPlugin::enumSampleSources()
 	return result;
 }
 
-PluginInstanceGUI* HackRFInputPlugin::createSampleSourcePluginInstanceGUI(const QString& sourceId, QWidget **widget, DeviceSourceAPI *deviceAPI)
+#ifdef SERVER_MODE
+PluginInstanceGUI* HackRFInputPlugin::createSampleSourcePluginInstanceGUI(
+        const QString& sourceId __attribute__((unused)),
+        QWidget **widget __attribute__((unused)),
+        DeviceUISet *deviceUISet __attribute__((unused)))
+{
+    return 0;
+}
+#else
+PluginInstanceGUI* HackRFInputPlugin::createSampleSourcePluginInstanceGUI(
+        const QString& sourceId,
+        QWidget **widget,
+        DeviceUISet *deviceUISet)
 {
 	if(sourceId == m_deviceTypeID)
 	{
-		HackRFInputGui* gui = new HackRFInputGui(deviceAPI);
+		HackRFInputGui* gui = new HackRFInputGui(deviceUISet);
 		*widget = gui;
 		return gui;
 	}
@@ -130,6 +149,7 @@ PluginInstanceGUI* HackRFInputPlugin::createSampleSourcePluginInstanceGUI(const 
 		return 0;
 	}
 }
+#endif
 
 DeviceSampleSource *HackRFInputPlugin::createSampleSourcePluginInstanceInput(const QString& sourceId, DeviceSourceAPI *deviceAPI)
 {

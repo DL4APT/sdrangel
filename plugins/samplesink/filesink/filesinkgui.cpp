@@ -32,12 +32,14 @@
 #include "mainwindow.h"
 
 #include "device/devicesinkapi.h"
+#include "device/deviceuiset.h"
 #include "filesinkgui.h"
 
-FileSinkGui::FileSinkGui(DeviceSinkAPI *deviceAPI, QWidget* parent) :
+FileSinkGui::FileSinkGui(DeviceUISet *deviceUISet, QWidget* parent) :
 	QWidget(parent),
 	ui(new Ui::FileSinkGui),
-	m_deviceAPI(deviceAPI),
+	m_deviceUISet(deviceUISet),
+	m_doApplySettings(true),
 	m_forceSettings(true),
 	m_settings(),
 	m_fileName("./test.sdriq"),
@@ -59,14 +61,14 @@ FileSinkGui::FileSinkGui(DeviceSinkAPI *deviceAPI, QWidget* parent) :
 
 	ui->fileNameText->setText(m_fileName);
 
-	connect(&(m_deviceAPI->getMasterTimer()), SIGNAL(timeout()), this, SLOT(tick()));
+	connect(&(m_deviceUISet->m_deviceSinkAPI->getMasterTimer()), SIGNAL(timeout()), this, SLOT(tick()));
 	connect(&m_updateTimer, SIGNAL(timeout()), this, SLOT(updateHardware()));
 	connect(&m_statusTimer, SIGNAL(timeout()), this, SLOT(updateStatus()));
 	m_statusTimer.start(500);
 
 	displaySettings();
 
-    m_deviceSampleSink = (FileSinkOutput*) m_deviceAPI->getSampleSink();
+    m_deviceSampleSink = (FileSinkOutput*) m_deviceUISet->m_deviceSinkAPI->getSampleSink();
     connect(&m_inputMessageQueue, SIGNAL(messageEnqueued()), this, SLOT(handleInputMessages()), Qt::QueuedConnection);
 }
 
@@ -129,7 +131,16 @@ bool FileSinkGui::deserialize(const QByteArray& data)
 
 bool FileSinkGui::handleMessage(const Message& message)
 {
-	if (FileSinkOutput::MsgReportFileSinkGeneration::match(message))
+    if (FileSinkOutput::MsgConfigureFileSink::match(message))
+    {
+        const FileSinkOutput::MsgConfigureFileSink& cfg = (FileSinkOutput::MsgConfigureFileSink&) message;
+        m_settings = cfg.getSettings();
+        blockApplySettings(true);
+        displaySettings();
+        blockApplySettings(false);
+        return true;
+    }
+    else if (FileSinkOutput::MsgReportFileSinkGeneration::match(message))
 	{
 		m_generation = ((FileSinkOutput::MsgReportFileSinkGeneration&)message).getAcquisition();
 		updateWithGeneration();
@@ -140,6 +151,14 @@ bool FileSinkGui::handleMessage(const Message& message)
 		m_samplesCount = ((FileSinkOutput::MsgReportFileSinkStreamTiming&)message).getSamplesCount();
 		updateWithStreamTime();
 		return true;
+	}
+	else if (FileSinkOutput::MsgStartStop::match(message))
+	{
+	    FileSinkOutput::MsgStartStop& notif = (FileSinkOutput::MsgStartStop&) message;
+	    blockApplySettings(true);
+	    ui->startStop->setChecked(notif.getStartStop());
+	    blockApplySettings(false);
+	    return true;
 	}
 	else
 	{
@@ -177,8 +196,8 @@ void FileSinkGui::handleInputMessages()
 
 void FileSinkGui::updateSampleRateAndFrequency()
 {
-    m_deviceAPI->getSpectrum()->setSampleRate(m_sampleRate);
-    m_deviceAPI->getSpectrum()->setCenterFrequency(m_deviceCenterFrequency);
+    m_deviceUISet->getSpectrum()->setSampleRate(m_sampleRate);
+    m_deviceUISet->getSpectrum()->setCenterFrequency(m_deviceCenterFrequency);
     ui->deviceRateText->setText(tr("%1k").arg((float)(m_sampleRate*(1<<m_settings.m_log2Interp)) / 1000));
 }
 
@@ -206,7 +225,7 @@ void FileSinkGui::updateHardware()
 
 void FileSinkGui::updateStatus()
 {
-    int state = m_deviceAPI->state();
+    int state = m_deviceUISet->m_deviceSinkAPI->state();
 
     if(m_lastEngineState != state)
     {
@@ -223,7 +242,7 @@ void FileSinkGui::updateStatus()
                 break;
             case DSPDeviceSinkEngine::StError:
                 ui->startStop->setStyleSheet("QToolButton { background-color : red; }");
-                QMessageBox::information(this, tr("Message"), m_deviceAPI->errorMessage());
+                QMessageBox::information(this, tr("Message"), m_deviceUISet->m_deviceSinkAPI->errorMessage());
                 break;
             default:
                 break;
@@ -258,22 +277,10 @@ void FileSinkGui::on_interp_currentIndexChanged(int index)
 
 void FileSinkGui::on_startStop_toggled(bool checked)
 {
-    if (checked)
+    if (m_doApplySettings)
     {
-        if (m_deviceAPI->initGeneration())
-        {
-            if (!m_deviceAPI->startGeneration())
-            {
-                qDebug("FileSinkGui::on_startStop_toggled: device start failed");
-            }
-
-            DSPEngine::instance()->startAudioInput();
-        }
-    }
-    else
-    {
-        m_deviceAPI->stopGeneration();
-        DSPEngine::instance()->stopAudioInput();
+        FileSinkOutput::MsgStartStop *message = FileSinkOutput::MsgStartStop::create(checked);
+        m_deviceSampleSink->getInputMessageQueue()->push(message);
     }
 }
 

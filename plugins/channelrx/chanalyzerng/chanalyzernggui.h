@@ -24,10 +24,8 @@
 #include "util/messagequeue.h"
 
 class PluginAPI;
-class DeviceSourceAPI;
-
-class ThreadedBasebandSampleSink;
-class DownChannelizer;
+class DeviceUISet;
+class BasebandSampleSink;
 class ChannelAnalyzerNG;
 class SpectrumScopeNGComboVis;
 class SpectrumVis;
@@ -41,7 +39,7 @@ class ChannelAnalyzerNGGUI : public RollupWidget, public PluginInstanceGUI {
 	Q_OBJECT
 
 public:
-	static ChannelAnalyzerNGGUI* create(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI);
+	static ChannelAnalyzerNGGUI* create(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel);
 	virtual void destroy();
 
 	void setName(const QString& name);
@@ -55,43 +53,27 @@ public:
 	virtual MessageQueue *getInputMessageQueue() { return &m_inputMessageQueue; }
 	virtual bool handleMessage(const Message& message);
 
-	static const QString m_channelID;
-
-private slots:
-	void viewChanged();
-//	void channelizerInputSampleRateChanged();
-	void on_deltaFrequency_changed(qint64 value);
-    void on_channelSampleRate_changed(quint64 value);
-    void on_useRationalDownsampler_toggled(bool checked);
-	void on_BW_valueChanged(int value);
-	void on_lowCut_valueChanged(int value);
-	void on_spanLog2_currentIndexChanged(int index);
-	void on_ssb_toggled(bool checked);
-	void onWidgetRolled(QWidget* widget, bool rollDown);
-	void onMenuDoubleClicked();
-    void handleInputMessages();
-	void tick();
+public slots:
+	void channelMarkerChangedByCursor();
+	void channelMarkerHighlightedByCursor();
 
 private:
 	Ui::ChannelAnalyzerNGGUI* ui;
 	PluginAPI* m_pluginAPI;
-	DeviceSourceAPI* m_deviceAPI;
+	DeviceUISet* m_deviceUISet;
 	ChannelMarker m_channelMarker;
-	bool m_basicSettingsShown;
 	bool m_doApplySettings;
 	int m_rate; //!< sample rate after final in-channel decimation (spanlog2)
 	int m_spanLog2;
 	MovingAverage<double> m_channelPowerDbAvg;
 
-//	ThreadedBasebandSampleSink* m_threadedChannelizer;
-//	DownChannelizer* m_channelizer;
 	ChannelAnalyzerNG* m_channelAnalyzer;
 	SpectrumScopeNGComboVis* m_spectrumScopeComboVis;
 	SpectrumVis* m_spectrumVis;
 	ScopeVisNG* m_scopeVis;
 	MessageQueue m_inputMessageQueue;
 
-	explicit ChannelAnalyzerNGGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidget* parent = NULL);
+	explicit ChannelAnalyzerNGGUI(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel, QWidget* parent = 0);
 	virtual ~ChannelAnalyzerNGGUI();
 
 	int  getRequestedChannelSampleRate();
@@ -105,6 +87,18 @@ private:
 
 	void leaveEvent(QEvent*);
 	void enterEvent(QEvent*);
+
+private slots:
+	void on_deltaFrequency_changed(qint64 value);
+    void on_channelSampleRate_changed(quint64 value);
+    void on_useRationalDownsampler_toggled(bool checked);
+	void on_BW_valueChanged(int value);
+	void on_lowCut_valueChanged(int value);
+	void on_spanLog2_currentIndexChanged(int index);
+	void on_ssb_toggled(bool checked);
+	void onWidgetRolled(QWidget* widget, bool rollDown);
+    void handleInputMessages();
+	void tick();
 };
 
 #endif // INCLUDE_CHANNELANALYZERNGGUI_H

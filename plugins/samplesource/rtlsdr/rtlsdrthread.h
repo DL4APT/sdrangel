@@ -24,7 +24,7 @@
 #include <rtl-sdr.h>
 
 #include "dsp/samplesinkfifo.h"
-#include "dsp/decimators.h"
+#include "dsp/decimatorsu.h"
 
 class RTLSDRThread : public QThread {
 	Q_OBJECT
@@ -52,7 +52,11 @@ private:
 	unsigned int m_log2Decim;
 	int m_fcPos;
 
-	Decimators<quint8, SDR_SAMP_SZ, 8> m_decimators;
+#ifdef SDR_RX_SAMPLE_24BIT
+    DecimatorsU<qint64, quint8, SDR_RX_SAMP_SZ, 8, 127> m_decimators;
+#else
+	DecimatorsU<qint32, quint8, SDR_RX_SAMP_SZ, 8, 127> m_decimators;
+#endif
 
 	void run();
 	void callback(const quint8* buf, qint32 len);

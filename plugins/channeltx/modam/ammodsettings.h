@@ -23,8 +23,6 @@ class Serializable;
 
 struct AMModSettings
 {
-    int m_basebandSampleRate;
-    int m_outputSampleRate;
     qint64 m_inputFrequencyOffset;
     Real m_rfBandwidth;
     float m_modFactor;
@@ -34,6 +32,7 @@ struct AMModSettings
     bool m_channelMute;
     bool m_playLoop;
     quint32 m_rgbColor;
+    QString m_title;
 
     Serializable *m_channelMarker;
     Serializable *m_cwKeyerGUI;

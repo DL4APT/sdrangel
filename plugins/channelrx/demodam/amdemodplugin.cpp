@@ -3,11 +3,12 @@
 #include "plugin/pluginapi.h"
 
 #include "amdemodgui.h"
+#include "amdemod.h"
 #include "amdemodplugin.h"
 
 const PluginDescriptor AMDemodPlugin::m_pluginDescriptor = {
 	QString("AM Demodulator"),
-	QString("3.7.4"),
+	QString("3.10.1"),
 	QString("(c) Edouard Griffiths, F4EXB"),
 	QString("https://github.com/f4exb/sdrangel"),
 	true,
@@ -30,21 +31,21 @@ void AMDemodPlugin::initPlugin(PluginAPI* pluginAPI)
 	m_pluginAPI = pluginAPI;
 
 	// register AM demodulator
-	m_pluginAPI->registerRxChannel(AMDemodGUI::m_channelID, this);
+	m_pluginAPI->registerRxChannel(AMDemod::m_channelIdURI, AMDemod::m_channelId, this);
 }
 
-PluginInstanceGUI* AMDemodPlugin::createRxChannel(const QString& channelName, DeviceSourceAPI *deviceAPI)
+PluginInstanceGUI* AMDemodPlugin::createRxChannelGUI(DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel)
 {
-	if(channelName == AMDemodGUI::m_channelID)
-	{
-		AMDemodGUI* gui = AMDemodGUI::create(m_pluginAPI, deviceAPI);
-		return gui;
-	} else {
-		return NULL;
-	}
+	return AMDemodGUI::create(m_pluginAPI, deviceUISet, rxChannel);
 }
 
-void AMDemodPlugin::createInstanceDemodAM(DeviceSourceAPI *deviceAPI)
+BasebandSampleSink* AMDemodPlugin::createRxChannelBS(DeviceSourceAPI *deviceAPI)
 {
-	AMDemodGUI::create(m_pluginAPI, deviceAPI);
+    return new AMDemod(deviceAPI);
 }
+
+ChannelSinkAPI* AMDemodPlugin::createRxChannelCS(DeviceSourceAPI *deviceAPI)
+{
+    return new AMDemod(deviceAPI);
+}
+

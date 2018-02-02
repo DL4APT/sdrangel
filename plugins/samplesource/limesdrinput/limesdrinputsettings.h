@@ -26,12 +26,6 @@
  */
 struct LimeSDRInputSettings
 {
-    typedef enum {
-        FC_POS_INFRA = 0,
-        FC_POS_SUPRA,
-        FC_POS_CENTER
-    } fcPos_t;
-
     enum PathRFE
     {
         PATH_RFE_NONE = 0,
@@ -66,6 +60,8 @@ struct LimeSDRInputSettings
     uint32_t m_lnaGain;      //!< Manual LAN gain
     uint32_t m_tiaGain;      //!< Manual TIA gain
     uint32_t m_pgaGain;      //!< Manual PGA gain
+    bool     m_extClock;     //!< True if external clock source
+    uint32_t m_extClockFreq; //!< Frequency (Hz) of external clock source
 
     LimeSDRInputSettings();
     void resetToDefaults();

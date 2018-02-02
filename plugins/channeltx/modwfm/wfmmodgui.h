@@ -27,11 +27,10 @@
 #include "wfmmodsettings.h"
 
 class PluginAPI;
-class DeviceSinkAPI;
-
+class DeviceUISet;
+class BasebandSampleSource;
 class ThreadedBasebandSampleSource;
 class UpChannelizer;
-class WFMMod;
 
 namespace Ui {
     class WFMModGUI;
@@ -41,7 +40,7 @@ class WFMModGUI : public RollupWidget, public PluginInstanceGUI {
     Q_OBJECT
 
 public:
-    static WFMModGUI* create(PluginAPI* pluginAPI, DeviceSinkAPI *deviceAPI);
+    static WFMModGUI* create(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSource *channelTx);
     virtual void destroy();
 
     void setName(const QString& name);
@@ -55,41 +54,15 @@ public:
     virtual MessageQueue *getInputMessageQueue() { return &m_inputMessageQueue; }
     virtual bool handleMessage(const Message& message);
 
-    static const QString m_channelID;
-
-private slots:
-    void channelMarkerChanged();
-    void handleSourceMessages();
-
-    void on_deltaFrequency_changed(qint64 value);
-    void on_rfBW_currentIndexChanged(int index);
-    void on_afBW_valueChanged(int value);
-    void on_fmDev_valueChanged(int value);
-    void on_toneFrequency_valueChanged(int value);
-    void on_volume_valueChanged(int value);
-    void on_channelMute_toggled(bool checked);
-    void on_tone_toggled(bool checked);
-    void on_morseKeyer_toggled(bool checked);
-    void on_mic_toggled(bool checked);
-    void on_play_toggled(bool checked);
-
-    void on_playLoop_toggled(bool checked);
-    void on_navTimeSlider_valueChanged(int value);
-    void on_showFileDialog_clicked(bool checked);
-
-    void onWidgetRolled(QWidget* widget, bool rollDown);
-    void onMenuDoubleClicked();
-
-    void configureFileName();
-    void tick();
+public slots:
+    void channelMarkerChangedByCursor();
 
 private:
     Ui::WFMModGUI* ui;
     PluginAPI* m_pluginAPI;
-    DeviceSinkAPI* m_deviceAPI;
+    DeviceUISet* m_deviceUISet;
     ChannelMarker m_channelMarker;
     WFMModSettings m_settings;
-    bool m_basicSettingsShown;
     bool m_doApplySettings;
 
 //    ThreadedBasebandSampleSource* m_threadedChannelizer;
@@ -106,7 +79,7 @@ private:
     WFMMod::WFMModInputAF m_modAFInput;
     MessageQueue m_inputMessageQueue;
 
-    explicit WFMModGUI(PluginAPI* pluginAPI, DeviceSinkAPI *deviceAPI, QWidget* parent = NULL);
+    explicit WFMModGUI(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSource *channelTx, QWidget* parent = 0);
     virtual ~WFMModGUI();
 
     void blockApplySettings(bool block);
@@ -126,6 +99,30 @@ private:
             return (3*rfBW)/2;
         }
     }
+
+private slots:
+    void handleSourceMessages();
+
+    void on_deltaFrequency_changed(qint64 value);
+    void on_rfBW_currentIndexChanged(int index);
+    void on_afBW_valueChanged(int value);
+    void on_fmDev_valueChanged(int value);
+    void on_toneFrequency_valueChanged(int value);
+    void on_volume_valueChanged(int value);
+    void on_channelMute_toggled(bool checked);
+    void on_tone_toggled(bool checked);
+    void on_morseKeyer_toggled(bool checked);
+    void on_mic_toggled(bool checked);
+    void on_play_toggled(bool checked);
+
+    void on_playLoop_toggled(bool checked);
+    void on_navTimeSlider_valueChanged(int value);
+    void on_showFileDialog_clicked(bool checked);
+
+    void onWidgetRolled(QWidget* widget, bool rollDown);
+
+    void configureFileName();
+    void tick();
 };
 
 #endif /* PLUGINS_CHANNELTX_MODWFM_WFMMODGUI_H_ */

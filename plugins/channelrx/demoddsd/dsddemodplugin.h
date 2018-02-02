@@ -21,7 +21,8 @@
 #include <QObject>
 #include "plugin/plugininterface.h"
 
-class DeviceSourceAPI;
+class DeviceUISet;
+class BasebandSampleSink;
 
 class DSDDemodPlugin : public QObject, PluginInterface {
 	Q_OBJECT
@@ -34,15 +35,14 @@ public:
 	const PluginDescriptor& getPluginDescriptor() const;
 	void initPlugin(PluginAPI* pluginAPI);
 
-	PluginInstanceGUI* createRxChannel(const QString& channelName, DeviceSourceAPI *deviceAPI);
+	virtual PluginInstanceGUI* createRxChannelGUI(DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel);
+	virtual BasebandSampleSink* createRxChannelBS(DeviceSourceAPI *deviceAPI);
+	virtual ChannelSinkAPI* createRxChannelCS(DeviceSourceAPI *deviceAPI);
 
 private:
 	static const PluginDescriptor m_pluginDescriptor;
 
 	PluginAPI* m_pluginAPI;
-
-private slots:
-	void createInstanceDSDDemod(DeviceSourceAPI *deviceAPI);
 };
 
 #endif // INCLUDE_DSDDEMODLUGIN_H

@@ -27,9 +27,10 @@
 #include "ammodsettings.h"
 
 class PluginAPI;
-class DeviceSinkAPI;
+class DeviceUISet;
 
 class AMMod;
+class BasebandSampleSource;
 
 namespace Ui {
     class AMModGUI;
@@ -39,7 +40,7 @@ class AMModGUI : public RollupWidget, public PluginInstanceGUI {
     Q_OBJECT
 
 public:
-    static AMModGUI* create(PluginAPI* pluginAPI, DeviceSinkAPI *deviceAPI);
+    static AMModGUI* create(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSource *channelTx);
     virtual void destroy();
 
     void setName(const QString& name);
@@ -53,10 +54,42 @@ public:
     virtual MessageQueue *getInputMessageQueue() { return &m_inputMessageQueue; }
     virtual bool handleMessage(const Message& message);
 
-    static const QString m_channelID;
+public slots:
+    void channelMarkerChangedByCursor();
+
+private:
+    Ui::AMModGUI* ui;
+    PluginAPI* m_pluginAPI;
+    DeviceUISet* m_deviceUISet;
+    ChannelMarker m_channelMarker;
+    AMModSettings m_settings;
+    bool m_doApplySettings;
+
+    AMMod* m_amMod;
+    MovingAverage<double> m_channelPowerDbAvg;
+
+    QString m_fileName;
+    quint32 m_recordLength;
+    int m_recordSampleRate;
+    int m_samplesCount;
+    std::size_t m_tickCount;
+    bool m_enableNavTime;
+    AMMod::AMModInputAF m_modAFInput;
+    MessageQueue m_inputMessageQueue;
+
+    explicit AMModGUI(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSource *channelTx, QWidget* parent = 0);
+    virtual ~AMModGUI();
+
+    void blockApplySettings(bool block);
+    void applySettings(bool force = false);
+    void displaySettings();
+    void updateWithStreamData();
+    void updateWithStreamTime();
+
+    void leaveEvent(QEvent*);
+    void enterEvent(QEvent*);
 
 private slots:
-    void channelMarkerChanged();
     void handleSourceMessages();
 
     void on_deltaFrequency_changed(qint64 value);
@@ -75,43 +108,9 @@ private slots:
     void on_showFileDialog_clicked(bool checked);
 
     void onWidgetRolled(QWidget* widget, bool rollDown);
-    void onMenuDoubleClicked();
 
     void configureFileName();
     void tick();
-
-private:
-    Ui::AMModGUI* ui;
-    PluginAPI* m_pluginAPI;
-    DeviceSinkAPI* m_deviceAPI;
-    ChannelMarker m_channelMarker;
-    AMModSettings m_settings;
-    bool m_basicSettingsShown;
-    bool m_doApplySettings;
-
-    AMMod* m_amMod;
-    MovingAverage<double> m_channelPowerDbAvg;
-
-    QString m_fileName;
-    quint32 m_recordLength;
-    int m_recordSampleRate;
-    int m_samplesCount;
-    std::size_t m_tickCount;
-    bool m_enableNavTime;
-    AMMod::AMModInputAF m_modAFInput;
-    MessageQueue m_inputMessageQueue;
-
-    explicit AMModGUI(PluginAPI* pluginAPI, DeviceSinkAPI *deviceAPI, QWidget* parent = NULL);
-    virtual ~AMModGUI();
-
-    void blockApplySettings(bool block);
-    void applySettings(bool force = false);
-    void displaySettings();
-    void updateWithStreamData();
-    void updateWithStreamTime();
-
-    void leaveEvent(QEvent*);
-    void enterEvent(QEvent*);
 };
 
 #endif /* PLUGINS_CHANNELTX_MODAM_AMMODGUI_H_ */

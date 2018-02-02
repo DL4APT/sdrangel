@@ -23,25 +23,24 @@
 #include "ssbmodgui.h"
 
 #include "device/devicesinkapi.h"
+#include "device/deviceuiset.h"
 #include "dsp/spectrumvis.h"
 #include "ui_ssbmodgui.h"
 #include "plugin/pluginapi.h"
 #include "util/simpleserializer.h"
 #include "util/db.h"
-#include "gui/basicchannelsettingswidget.h"
 #include "dsp/dspengine.h"
 #include "mainwindow.h"
 
-const QString SSBModGUI::m_channelID = "sdrangel.channeltx.modssb";
-
-SSBModGUI* SSBModGUI::create(PluginAPI* pluginAPI, DeviceSinkAPI *deviceAPI)
+SSBModGUI* SSBModGUI::create(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSource *channelTx)
 {
-    SSBModGUI* gui = new SSBModGUI(pluginAPI, deviceAPI);
+    SSBModGUI* gui = new SSBModGUI(pluginAPI, deviceUISet, channelTx);
 	return gui;
 }
 
 void SSBModGUI::destroy()
 {
+    delete this;
 }
 
 void SSBModGUI::setName(const QString& name)
@@ -79,15 +78,16 @@ bool SSBModGUI::deserialize(const QByteArray& data)
 {
     if(m_settings.deserialize(data))
     {
+        qDebug("SSBModGUI::deserialize");
         displaySettings();
-        applySettings(true); // will have true
+        applyBandwidths(true); // does applySettings(true)
         return true;
     }
     else
     {
         m_settings.resetToDefaults();
         displaySettings();
-        applySettings(true); // will have true
+        applyBandwidths(true); // does applySettings(true)
         return false;
     }
 }
@@ -114,10 +114,10 @@ bool SSBModGUI::handleMessage(const Message& message)
     }
 }
 
-void SSBModGUI::channelMarkerChanged()
+void SSBModGUI::channelMarkerChangedByCursor()
 {
+    ui->deltaFrequency->setValue(m_channelMarker.getCenterFrequency());
     m_settings.m_inputFrequencyOffset = m_channelMarker.getCenterFrequency();
-    displaySettings();
     applySettings();
 }
 
@@ -150,45 +150,18 @@ void SSBModGUI::on_deltaFrequency_changed(qint64 value)
     applySettings();
 }
 
-void SSBModGUI::on_dsb_toggled(bool checked)
+void SSBModGUI::on_flipSidebands_clicked(bool checked __attribute__((unused)))
 {
-    m_settings.m_dsb = checked;
+    int bwValue = ui->BW->value();
+    int lcValue = ui->lowCut->value();
+    ui->BW->setValue(-bwValue);
+    ui->lowCut->setValue(-lcValue);
+}
 
-    if (checked)
-    {
-        if (ui->BW->value() < 0) {
-            ui->BW->setValue(-ui->BW->value());
-        }
-
-        m_channelMarker.setSidebands(ChannelMarker::dsb);
-
-        QString bwStr = QString::number(ui->BW->value()/10.0, 'f', 1);
-        ui->BWText->setText(tr("%1%2k").arg(QChar(0xB1, 0x00)).arg(bwStr));
-        ui->lowCut->setValue(0);
-        ui->lowCut->setEnabled(false);
-
-        m_settings.m_bandwidth = ui->BW->value() * 100.0;
-        m_settings.m_lowCutoff = 0;
-
-        applySettings();
-    }
-    else
-    {
-        if (ui->BW->value() < 0) {
-            m_channelMarker.setSidebands(ChannelMarker::lsb);
-        } else {
-            m_channelMarker.setSidebands(ChannelMarker::usb);
-        }
-
-        QString bwStr = QString::number(ui->BW->value()/10.0, 'f', 1);
-        ui->BWText->setText(tr("%1k").arg(bwStr));
-        ui->lowCut->setEnabled(true);
-        m_settings.m_bandwidth = ui->BW->value() * 100.0;
-
-        on_lowCut_valueChanged(m_channelMarker.getLowCutoff()/100);
-    }
-
-    setNewRate(m_settings.m_spanLog2);
+void SSBModGUI::on_dsb_toggled(bool dsb)
+{
+    ui->flipSidebands->setEnabled(!dsb);
+    applyBandwidths();
 }
 
 void SSBModGUI::on_audioBinaural_toggled(bool checked)
@@ -205,74 +178,21 @@ void SSBModGUI::on_audioFlipChannels_toggled(bool checked)
 
 void SSBModGUI::on_spanLog2_valueChanged(int value)
 {
-    if (setNewRate(value))
-    {
-        m_settings.m_spanLog2 = value;
-        applySettings();
+    if ((value < 1) || (value > 5)) {
+        return;
     }
 
+    applyBandwidths();
 }
 
-void SSBModGUI::on_BW_valueChanged(int value)
+void SSBModGUI::on_BW_valueChanged(int value __attribute__((unused)))
 {
-    QString s = QString::number(value/10.0, 'f', 1);
-    m_channelMarker.setBandwidth(value * 200);
-
-    if (ui->dsb->isChecked())
-    {
-        ui->BWText->setText(tr("%1%2k").arg(QChar(0xB1, 0x00)).arg(s));
-    }
-    else
-    {
-        ui->BWText->setText(tr("%1k").arg(s));
-    }
-
-    m_settings.m_bandwidth = value * 100;
-    on_lowCut_valueChanged(m_channelMarker.getLowCutoff()/100);
-	setNewRate(m_settings.m_spanLog2);
+    applyBandwidths();
 }
 
-void SSBModGUI::on_lowCut_valueChanged(int value)
+void SSBModGUI::on_lowCut_valueChanged(int value __attribute__((unused)))
 {
-    int lowCutoff = getEffectiveLowCutoff(value * 100);
-    m_channelMarker.setLowCutoff(lowCutoff);
-    QString s = QString::number(lowCutoff/1000.0, 'f', 1);
-    ui->lowCutText->setText(tr("%1k").arg(s));
-    ui->lowCut->setValue(lowCutoff/100);
-    m_settings.m_lowCutoff = ui->lowCut->value() * 100.0;
-    applySettings();
-}
-
-int SSBModGUI::getEffectiveLowCutoff(int lowCutoff)
-{
-    int ssbBW = m_channelMarker.getBandwidth() / 2;
-    int effectiveLowCutoff = lowCutoff;
-    const int guard = 100;
-
-    if (ssbBW < 0)
-    {
-        if (effectiveLowCutoff < ssbBW + guard)
-        {
-            effectiveLowCutoff = ssbBW + guard;
-        }
-        if (effectiveLowCutoff > 0)
-        {
-            effectiveLowCutoff = 0;
-        }
-    }
-    else
-    {
-        if (effectiveLowCutoff > ssbBW - guard)
-        {
-            effectiveLowCutoff = ssbBW - guard;
-        }
-        if (effectiveLowCutoff < 0)
-        {
-            effectiveLowCutoff = 0;
-        }
-    }
-
-    return effectiveLowCutoff;
+    applyBandwidths();
 }
 
 void SSBModGUI::on_toneFrequency_valueChanged(int value)
@@ -424,30 +344,14 @@ void SSBModGUI::onWidgetRolled(QWidget* widget __attribute__((unused)), bool rol
 {
 }
 
-void SSBModGUI::onMenuDoubleClicked()
-{
-	if (!m_basicSettingsShown)
-	{
-		m_basicSettingsShown = true;
-		BasicChannelSettingsWidget* bcsw = new BasicChannelSettingsWidget(&m_channelMarker, this);
-		bcsw->show();
-
-		if (bcsw->getHasChanged())
-		{
-		    channelMarkerUpdate();
-		}
-	}
-}
-
-SSBModGUI::SSBModGUI(PluginAPI* pluginAPI, DeviceSinkAPI *deviceAPI, QWidget* parent) :
+SSBModGUI::SSBModGUI(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSource *channelTx, QWidget* parent) :
 	RollupWidget(parent),
 	ui(new Ui::SSBModGUI),
 	m_pluginAPI(pluginAPI),
-	m_deviceAPI(deviceAPI),
+	m_deviceUISet(deviceUISet),
 	m_channelMarker(this),
-	m_basicSettingsShown(false),
 	m_doApplySettings(true),
-	m_rate(6000),
+	m_spectrumRate(6000),
 	m_channelPowerDbAvg(20,0),
     m_recordLength(0),
     m_recordSampleRate(48000),
@@ -459,16 +363,16 @@ SSBModGUI::SSBModGUI(PluginAPI* pluginAPI, DeviceSinkAPI *deviceAPI, QWidget* pa
 	ui->setupUi(this);
 	setAttribute(Qt::WA_DeleteOnClose, true);
 	connect(this, SIGNAL(widgetRolled(QWidget*,bool)), this, SLOT(onWidgetRolled(QWidget*,bool)));
-	connect(this, SIGNAL(menuDoubleClickEvent()), this, SLOT(onMenuDoubleClicked()));
 
-	m_spectrumVis = new SpectrumVis(ui->glSpectrum);
-	m_ssbMod = new SSBMod(m_deviceAPI, m_spectrumVis);
+	m_spectrumVis = new SpectrumVis(SDR_TX_SCALEF, ui->glSpectrum);
+	m_ssbMod = (SSBMod*) channelTx; //new SSBMod(m_deviceUISet->m_deviceSinkAPI);
+	m_ssbMod->setSpectrumSampleSink(m_spectrumVis);
 	m_ssbMod->setMessageQueueToGUI(getInputMessageQueue());
 
     resetToDefaults();
 
-	ui->glSpectrum->setCenterFrequency(m_rate/2);
-	ui->glSpectrum->setSampleRate(m_rate);
+	ui->glSpectrum->setCenterFrequency(m_spectrumRate/2);
+	ui->glSpectrum->setSampleRate(m_spectrumRate);
 	ui->glSpectrum->setDisplayWaterfall(true);
 	ui->glSpectrum->setDisplayMaxHold(true);
 	ui->glSpectrum->setSsbSpectrum(true);
@@ -480,17 +384,24 @@ SSBModGUI::SSBModGUI(PluginAPI* pluginAPI, DeviceSinkAPI *deviceAPI, QWidget* pa
     ui->deltaFrequency->setColorMapper(ColorMapper(ColorMapper::GrayGold));
     ui->deltaFrequency->setValueRange(false, 7, -9999999, 9999999);
 
+    m_channelMarker.blockSignals(true);
 	m_channelMarker.setColor(Qt::green);
-	m_channelMarker.setBandwidth(m_rate);
+	m_channelMarker.setBandwidth(m_spectrumRate);
 	m_channelMarker.setSidebands(ChannelMarker::usb);
 	m_channelMarker.setCenterFrequency(0);
+    m_channelMarker.setTitle("SSB Modulator");
+    m_channelMarker.setUDPAddress("127.0.0.1");
+    m_channelMarker.setUDPSendPort(9999);
+    m_channelMarker.blockSignals(false);
 	m_channelMarker.setVisible(true);
 
-    connect(&m_channelMarker, SIGNAL(changed()), this, SLOT(channelMarkerChanged()));
+    setTitleColor(m_channelMarker.getColor());
 
-	m_deviceAPI->registerChannelInstance(m_channelID, this);
-    m_deviceAPI->addChannelMarker(&m_channelMarker);
-    m_deviceAPI->addRollupWidget(this);
+    m_deviceUISet->registerTxChannelInstance(SSBMod::m_channelIdURI, this);
+    m_deviceUISet->addChannelMarker(&m_channelMarker);
+    m_deviceUISet->addRollupWidget(this);
+
+    connect(&m_channelMarker, SIGNAL(changedByCursor()), this, SLOT(channelMarkerChangedByCursor()));
 
     ui->cwKeyerGUI->setBuddies(m_ssbMod->getInputMessageQueue(), m_ssbMod->getCWKeyer());
     ui->spectrumGUI->setBuddies(m_spectrumVis->getInputMessageQueue(), m_spectrumVis, ui->glSpectrum);
@@ -499,101 +410,31 @@ SSBModGUI::SSBModGUI(PluginAPI* pluginAPI, DeviceSinkAPI *deviceAPI, QWidget* pa
     m_settings.setSpectrumGUI(ui->spectrumGUI);
     m_settings.setCWKeyerGUI(ui->cwKeyerGUI);
 
-    displaySettings();
-	applySettings(true);
-	setNewRate(m_settings.m_spanLog2);
-
 	connect(getInputMessageQueue(), SIGNAL(messageEnqueued()), this, SLOT(handleSourceMessages()));
 	connect(m_ssbMod, SIGNAL(levelChanged(qreal, qreal, int)), ui->volumeMeter, SLOT(levelChanged(qreal, qreal, int)));
+
+    m_iconDSBUSB.addPixmap(QPixmap("://dsb.png"), QIcon::Normal, QIcon::On);
+    m_iconDSBUSB.addPixmap(QPixmap("://usb.png"), QIcon::Normal, QIcon::Off);
+    m_iconDSBLSB.addPixmap(QPixmap("://dsb.png"), QIcon::Normal, QIcon::On);
+    m_iconDSBLSB.addPixmap(QPixmap("://lsb.png"), QIcon::Normal, QIcon::Off);
+
+    displaySettings();
+    applyBandwidths(true); // does applySettings(true)
 }
 
 SSBModGUI::~SSBModGUI()
 {
-    m_deviceAPI->removeChannelInstance(this);
-	delete m_ssbMod;
+    m_deviceUISet->removeRxChannelInstance(this);
+	delete m_ssbMod; // TODO: check this: when the GUI closes it has to delete the modulator
 	delete m_spectrumVis;
 	delete ui;
 }
 
-bool SSBModGUI::setNewRate(int spanLog2)
+bool SSBModGUI::blockApplySettings(bool block)
 {
-	if ((spanLog2 < 1) || (spanLog2 > 5))
-	{
-		return false;
-	}
-
-	m_settings.m_spanLog2 = spanLog2;
-	m_rate = 48000 / (1<<spanLog2);
-
-	if (ui->BW->value() < -m_rate/100)
-	{
-		ui->BW->setValue(-m_rate/100);
-		m_channelMarker.setBandwidth(-m_rate*2);
-	}
-	else if (ui->BW->value() > m_rate/100)
-	{
-		ui->BW->setValue(m_rate/100);
-		m_channelMarker.setBandwidth(m_rate*2);
-	}
-
-	if (ui->lowCut->value() < -m_rate/100)
-	{
-		ui->lowCut->setValue(-m_rate/100);
-		m_channelMarker.setLowCutoff(-m_rate);
-	}
-	else if (ui->lowCut->value() > m_rate/100)
-	{
-		ui->lowCut->setValue(m_rate/100);
-		m_channelMarker.setLowCutoff(m_rate);
-	}
-
-	QString s = QString::number(m_rate/1000.0, 'f', 1);
-
-	if (ui->dsb->isChecked())
-	{
-        ui->BW->setMinimum(0);
-        ui->BW->setMaximum(m_rate/100);
-        ui->lowCut->setMinimum(0);
-        ui->lowCut->setMaximum(m_rate/100);
-
-        m_channelMarker.setSidebands(ChannelMarker::dsb);
-
-        ui->spanText->setText(tr("%1%2k").arg(QChar(0xB1, 0x00)).arg(s));
-        ui->glSpectrum->setCenterFrequency(0);
-        ui->glSpectrum->setSampleRate(2*m_rate);
-        ui->glSpectrum->setSsbSpectrum(false);
-        ui->glSpectrum->setLsbDisplay(false);
-	}
-	else
-	{
-        ui->BW->setMinimum(-m_rate/100);
-        ui->BW->setMaximum(m_rate/100);
-        ui->lowCut->setMinimum(-m_rate/100);
-        ui->lowCut->setMaximum(m_rate/100);
-
-        if (ui->BW->value() < 0)
-        {
-            m_channelMarker.setSidebands(ChannelMarker::lsb);
-            ui->glSpectrum->setLsbDisplay(true);
-        }
-        else
-        {
-            m_channelMarker.setSidebands(ChannelMarker::usb);
-            ui->glSpectrum->setLsbDisplay(false);
-        }
-
-        ui->spanText->setText(tr("%1k").arg(s));
-        ui->glSpectrum->setCenterFrequency(m_rate/2);
-        ui->glSpectrum->setSampleRate(m_rate);
-        ui->glSpectrum->setSsbSpectrum(true);
-	}
-
-	return true;
-}
-
-void SSBModGUI::blockApplySettings(bool block)
-{
+    bool ret = !m_doApplySettings;
     m_doApplySettings = !block;
+    return ret;
 }
 
 void SSBModGUI::applySettings(bool force)
@@ -609,27 +450,136 @@ void SSBModGUI::applySettings(bool force)
 	}
 }
 
+void SSBModGUI::applyBandwidths(bool force)
+{
+    bool dsb = ui->dsb->isChecked();
+    int spanLog2 = ui->spanLog2->value();
+    m_spectrumRate = 48000 / (1<<spanLog2);
+    int bw = ui->BW->value();
+    int lw = ui->lowCut->value();
+    int bwMax = 480/(1<<spanLog2);
+    int tickInterval = m_spectrumRate / 1200;
+    tickInterval = tickInterval == 0 ? 1 : tickInterval;
+
+    qDebug() << "SSBModGUI::applyBandwidths:"
+            << " dsb: " << dsb
+            << " spanLog2: " << spanLog2
+            << " m_spectrumRate: " << m_spectrumRate
+            << " bw: " << bw
+            << " lw: " << lw
+            << " bwMax: " << bwMax
+            << " tickInterval: " << tickInterval;
+
+    ui->BW->setTickInterval(tickInterval);
+    ui->lowCut->setTickInterval(tickInterval);
+
+    bw = bw < -bwMax ? -bwMax : bw > bwMax ? bwMax : bw;
+
+    if (bw < 0) {
+        lw = lw < bw+1 ? bw+1 : lw < 0 ? lw : 0;
+    } else if (bw > 0) {
+        lw = lw > bw-1 ? bw-1 : lw < 0 ? 0 : lw;
+    } else {
+        lw = 0;
+    }
+
+    if (dsb)
+    {
+        bw = bw < 0 ? -bw : bw;
+        lw = 0;
+    }
+
+    QString spanStr = QString::number(bwMax/10.0, 'f', 1);
+    QString bwStr   = QString::number(bw/10.0, 'f', 1);
+    QString lwStr   = QString::number(lw/10.0, 'f', 1);
+
+    if (dsb)
+    {
+        ui->BWText->setText(tr("%1%2k").arg(QChar(0xB1, 0x00)).arg(bwStr));
+        ui->spanText->setText(tr("%1%2k").arg(QChar(0xB1, 0x00)).arg(spanStr));
+        ui->scaleMinus->setText("0");
+        ui->scaleCenter->setText("");
+        ui->scalePlus->setText(tr("%1").arg(QChar(0xB1, 0x00)));
+        ui->lsbLabel->setText("");
+        ui->usbLabel->setText("");
+        ui->glSpectrum->setCenterFrequency(0);
+        ui->glSpectrum->setSampleRate(2*m_spectrumRate);
+        ui->glSpectrum->setSsbSpectrum(false);
+        ui->glSpectrum->setLsbDisplay(false);
+    }
+    else
+    {
+        ui->BWText->setText(tr("%1k").arg(bwStr));
+        ui->spanText->setText(tr("%1k").arg(spanStr));
+        ui->scaleMinus->setText("-");
+        ui->scaleCenter->setText("0");
+        ui->scalePlus->setText("+");
+        ui->lsbLabel->setText("LSB");
+        ui->usbLabel->setText("USB");
+        ui->glSpectrum->setCenterFrequency(m_spectrumRate/2);
+        ui->glSpectrum->setSampleRate(m_spectrumRate);
+        ui->glSpectrum->setSsbSpectrum(true);
+        ui->glSpectrum->setLsbDisplay(bw < 0);
+    }
+
+    ui->lowCutText->setText(tr("%1k").arg(lwStr));
+
+
+    ui->BW->blockSignals(true);
+    ui->lowCut->blockSignals(true);
+
+    ui->BW->setMaximum(bwMax);
+    ui->BW->setMinimum(dsb ? 0 : -bwMax);
+    ui->BW->setValue(bw);
+
+    ui->lowCut->setMaximum(dsb ? 0 :  bwMax);
+    ui->lowCut->setMinimum(dsb ? 0 : -bwMax);
+    ui->lowCut->setValue(lw);
+
+    ui->lowCut->blockSignals(false);
+    ui->BW->blockSignals(false);
+
+
+    m_settings.m_dsb = dsb;
+    m_settings.m_spanLog2 = spanLog2;
+    m_settings.m_bandwidth = bw * 100;
+    m_settings.m_lowCutoff = lw * 100;
+
+    applySettings(force);
+
+    bool applySettingsWereBlocked = blockApplySettings(true);
+    m_channelMarker.setBandwidth(bw * 200);
+    m_channelMarker.setSidebands(dsb ? ChannelMarker::dsb : bw < 0 ? ChannelMarker::lsb : ChannelMarker::usb);
+    ui->dsb->setIcon(bw < 0 ? m_iconDSBLSB : m_iconDSBUSB);
+    if (!dsb) { m_channelMarker.setLowCutoff(lw * 100); }
+    blockApplySettings(applySettingsWereBlocked);
+}
+
 void SSBModGUI::displaySettings()
 {
     m_channelMarker.blockSignals(true);
     m_channelMarker.setCenterFrequency(m_settings.m_inputFrequencyOffset);
     m_channelMarker.setBandwidth(m_settings.m_bandwidth * 2);
     m_channelMarker.setLowCutoff(m_settings.m_lowCutoff);
-    m_channelMarker.setColor(m_settings.m_rgbColor);
-    setTitleColor(m_settings.m_rgbColor);
+
+    ui->flipSidebands->setEnabled(!m_settings.m_dsb);
 
     if (m_settings.m_dsb) {
         m_channelMarker.setSidebands(ChannelMarker::dsb);
     } else {
         if (m_settings.m_bandwidth < 0) {
             m_channelMarker.setSidebands(ChannelMarker::lsb);
+            ui->dsb->setIcon(m_iconDSBLSB);
         } else {
             m_channelMarker.setSidebands(ChannelMarker::usb);
+            ui->dsb->setIcon(m_iconDSBUSB);
         }
     }
 
     m_channelMarker.blockSignals(false);
+    m_channelMarker.setColor(m_settings.m_rgbColor);
 
+    setTitleColor(m_settings.m_rgbColor);
     setWindowTitle(m_channelMarker.getTitle());
 
     blockApplySettings(true);
@@ -652,8 +602,15 @@ void SSBModGUI::displaySettings()
     ui->audioBinaural->setChecked(m_settings.m_audioBinaural);
     ui->audioFlipChannels->setChecked(m_settings.m_audioFlipChannels);
     ui->audioMute->setChecked(m_settings.m_audioMute);
-    ui->dsb->setChecked(m_settings.m_dsb);
     ui->playLoop->setChecked(m_settings.m_playLoop);
+
+    // Prevent uncontrolled triggering of applyBandwidths
+    ui->spanLog2->blockSignals(true);
+    ui->dsb->blockSignals(true);
+    ui->BW->blockSignals(true);
+
+    ui->dsb->setChecked(m_settings.m_dsb);
+    ui->spanLog2->setValue(m_settings.m_spanLog2);
 
     ui->BW->setValue(roundf(m_settings.m_bandwidth/100.0));
     s = QString::number(m_settings.m_bandwidth/1000.0, 'f', 1);
@@ -667,12 +624,16 @@ void SSBModGUI::displaySettings()
         ui->BWText->setText(tr("%1k").arg(s));
     }
 
-    ui->deltaFrequency->setValue(m_settings.m_inputFrequencyOffset);
+    ui->spanLog2->blockSignals(false);
+    ui->dsb->blockSignals(false);
+    ui->BW->blockSignals(false);
 
+    // The only one of the four signals triggering applyBandwidths will trigger it once only with all other values
+    // set correctly and therefore validate the settings and apply them to dependent widgets
     ui->lowCut->setValue(m_settings.m_lowCutoff / 100.0);
     ui->lowCutText->setText(tr("%1k").arg(m_settings.m_lowCutoff / 1000.0));
 
-    ui->spanLog2->setValue(m_settings.m_spanLog2);
+    ui->deltaFrequency->setValue(m_settings.m_inputFrequencyOffset);
 
     ui->toneFrequency->setValue(roundf(m_settings.m_toneFrequency / 10.0));
     ui->toneFrequencyText->setText(QString("%1k").arg(m_settings.m_toneFrequency / 1000.0, 0, 'f', 2));
@@ -700,16 +661,12 @@ void SSBModGUI::displayAGCPowerThreshold()
 
 void SSBModGUI::leaveEvent(QEvent*)
 {
-	blockApplySettings(true);
 	m_channelMarker.setHighlighted(false);
-	blockApplySettings(false);
 }
 
 void SSBModGUI::enterEvent(QEvent*)
 {
-	blockApplySettings(true);
 	m_channelMarker.setHighlighted(true);
-	blockApplySettings(false);
 }
 
 void SSBModGUI::tick()

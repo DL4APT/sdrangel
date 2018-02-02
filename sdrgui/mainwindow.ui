@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>1012</width>
-    <height>767</height>
+    <height>721</height>
    </rect>
   </property>
   <property name="font">
@@ -20,7 +20,7 @@
    <string>SDRangel</string>
   </property>
   <property name="windowIcon">
-   <iconset resource="../sdrgui/resources/res.qrc">
+   <iconset resource="resources/res.qrc">
     <normaloff>:/sdrangel_icon.png</normaloff>:/sdrangel_icon.png</iconset>
   </property>
   <property name="animated">
@@ -98,12 +98,11 @@
      </font>
     </property>
     <property name="title">
-     <string>&amp;Devices</string>
+     <string>&amp;DeviceSets</string>
     </property>
     <addaction name="action_addSourceDevice"/>
     <addaction name="action_addSinkDevice"/>
     <addaction name="action_removeLastDevice"/>
-    <addaction name="action_reloadDevices"/>
    </widget>
    <widget class="QMenu" name="menu_View">
     <property name="font">
@@ -147,6 +146,7 @@
      <string>&amp;Preferences</string>
     </property>
     <addaction name="action_Audio"/>
+    <addaction name="action_Logging"/>
     <addaction name="action_DV_Serial"/>
     <addaction name="action_My_Position"/>
    </widget>
@@ -301,8 +301,11 @@
    <attribute name="dockWidgetArea">
     <number>1</number>
    </attribute>
-   <widget class="QWidget" name="dockWidgetContents">
-    <layout class="QGridLayout" name="gridLayout_6">
+   <widget class="QWidget" name="presetsDockWidget">
+    <layout class="QVBoxLayout" name="verticalLayout_6">
+     <property name="spacing">
+      <number>3</number>
+     </property>
      <property name="leftMargin">
       <number>2</number>
      </property>
@@ -315,83 +318,7 @@
      <property name="bottomMargin">
       <number>2</number>
      </property>
-     <property name="spacing">
-      <number>3</number>
-     </property>
-     <item row="5" column="1">
-      <widget class="QToolButton" name="presetSave">
-       <property name="toolTip">
-        <string>Save current settings as new preset</string>
-       </property>
-       <property name="text">
-        <string>...</string>
-       </property>
-       <property name="icon">
-        <iconset resource="../sdrgui/resources/res.qrc">
-         <normaloff>:/preset-save.png</normaloff>:/preset-save.png</iconset>
-       </property>
-       <property name="iconSize">
-        <size>
-         <width>16</width>
-         <height>16</height>
-        </size>
-       </property>
-      </widget>
-     </item>
-     <item row="5" column="12">
-      <widget class="QToolButton" name="presetLoad">
-       <property name="toolTip">
-        <string>Load selected preset</string>
-       </property>
-       <property name="text">
-        <string>...</string>
-       </property>
-       <property name="icon">
-        <iconset resource="../sdrgui/resources/res.qrc">
-         <normaloff>:/preset-load.png</normaloff>:/preset-load.png</iconset>
-       </property>
-       <property name="iconSize">
-        <size>
-         <width>16</width>
-         <height>16</height>
-        </size>
-       </property>
-      </widget>
-     </item>
-     <item row="5" column="10" colspan="2">
-      <spacer name="horizontalSpacer_3">
-       <property name="orientation">
-        <enum>Qt::Horizontal</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>40</width>
-         <height>20</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
-     <item row="5" column="8">
-      <widget class="QToolButton" name="presetDelete">
-       <property name="toolTip">
-        <string>Delete selected preset</string>
-       </property>
-       <property name="text">
-        <string>...</string>
-       </property>
-       <property name="icon">
-        <iconset resource="../sdrgui/resources/res.qrc">
-         <normaloff>:/preset-delete.png</normaloff>:/preset-delete.png</iconset>
-       </property>
-       <property name="iconSize">
-        <size>
-         <width>16</width>
-         <height>16</height>
-        </size>
-       </property>
-      </widget>
-     </item>
-     <item row="1" column="1" rowspan="4" colspan="12">
+     <item>
       <widget class="QTreeWidget" name="presetTree">
        <property name="indentation">
         <number>10</number>
@@ -425,99 +352,177 @@
        </column>
       </widget>
      </item>
-     <item row="5" column="2">
-      <widget class="QToolButton" name="presetUpdate">
-       <property name="toolTip">
-        <string>Update selected preset with current settings</string>
-       </property>
-       <property name="text">
-        <string>...</string>
-       </property>
-       <property name="icon">
-        <iconset resource="../sdrgui/resources/res.qrc">
-         <normaloff>:/preset-update.png</normaloff>:/preset-update.png</iconset>
-       </property>
-       <property name="iconSize">
-        <size>
-         <width>16</width>
-         <height>16</height>
-        </size>
-       </property>
-      </widget>
-     </item>
-     <item row="5" column="7">
-      <spacer name="horizontalSpacer">
-       <property name="orientation">
-        <enum>Qt::Horizontal</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>40</width>
-         <height>20</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
-     <item row="5" column="3">
-      <widget class="QToolButton" name="settingsSave">
-       <property name="toolTip">
-        <string>Save the current settings (inc. presets)</string>
-       </property>
-       <property name="text">
-        <string>...</string>
-       </property>
-       <property name="icon">
-        <iconset resource="../sdrgui/resources/res.qrc">
-         <normaloff>:/preset-last.png</normaloff>:/preset-last.png</iconset>
-       </property>
-       <property name="iconSize">
-        <size>
-         <width>16</width>
-         <height>16</height>
-        </size>
-       </property>
-      </widget>
-     </item>
-     <item row="5" column="5">
-      <widget class="QToolButton" name="presetExport">
-       <property name="toolTip">
-        <string>Export current preset to file</string>
-       </property>
-       <property name="text">
-        <string/>
-       </property>
-       <property name="icon">
-        <iconset resource="../sdrgui/resources/res.qrc">
-         <normaloff>:/export.png</normaloff>:/export.png</iconset>
-       </property>
-      </widget>
-     </item>
-     <item row="5" column="4">
-      <spacer name="horizontalSpacer_2">
-       <property name="orientation">
-        <enum>Qt::Horizontal</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>40</width>
-         <height>20</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
-     <item row="5" column="6">
-      <widget class="QToolButton" name="presetImport">
-       <property name="toolTip">
-        <string>Import preset from file into current group</string>
-       </property>
-       <property name="text">
-        <string/>
-       </property>
-       <property name="icon">
-        <iconset resource="../sdrgui/resources/res.qrc">
-         <normaloff>:/import.png</normaloff>:/import.png</iconset>
-       </property>
-      </widget>
+     <item>
+      <layout class="QHBoxLayout" name="presetsControl">
+       <item>
+        <widget class="QToolButton" name="presetSave">
+         <property name="toolTip">
+          <string>Save current settings as new preset</string>
+         </property>
+         <property name="text">
+          <string>...</string>
+         </property>
+         <property name="icon">
+          <iconset resource="resources/res.qrc">
+           <normaloff>:/create.png</normaloff>:/create.png</iconset>
+         </property>
+         <property name="iconSize">
+          <size>
+           <width>16</width>
+           <height>16</height>
+          </size>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QToolButton" name="presetUpdate">
+         <property name="toolTip">
+          <string>Update selected preset with current settings</string>
+         </property>
+         <property name="text">
+          <string>...</string>
+         </property>
+         <property name="icon">
+          <iconset resource="resources/res.qrc">
+           <normaloff>:/recycle.png</normaloff>:/recycle.png</iconset>
+         </property>
+         <property name="iconSize">
+          <size>
+           <width>16</width>
+           <height>16</height>
+          </size>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QToolButton" name="settingsSave">
+         <property name="toolTip">
+          <string>Save the current settings (inc. presets)</string>
+         </property>
+         <property name="text">
+          <string>...</string>
+         </property>
+         <property name="icon">
+          <iconset resource="resources/res.qrc">
+           <normaloff>:/save.png</normaloff>:/save.png</iconset>
+         </property>
+         <property name="iconSize">
+          <size>
+           <width>16</width>
+           <height>16</height>
+          </size>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QToolButton" name="presetEdit">
+         <property name="toolTip">
+          <string>Edit preset details</string>
+         </property>
+         <property name="text">
+          <string/>
+         </property>
+         <property name="icon">
+          <iconset resource="resources/res.qrc">
+           <normaloff>:/edit.png</normaloff>:/edit.png</iconset>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QToolButton" name="presetExport">
+         <property name="toolTip">
+          <string>Export current preset to file</string>
+         </property>
+         <property name="text">
+          <string/>
+         </property>
+         <property name="icon">
+          <iconset resource="resources/res.qrc">
+           <normaloff>:/export.png</normaloff>:/export.png</iconset>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QToolButton" name="presetImport">
+         <property name="toolTip">
+          <string>Import preset from file into current group</string>
+         </property>
+         <property name="text">
+          <string/>
+         </property>
+         <property name="icon">
+          <iconset resource="resources/res.qrc">
+           <normaloff>:/import.png</normaloff>:/import.png</iconset>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="horizontalSpacer">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>40</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item>
+        <widget class="QToolButton" name="presetDelete">
+         <property name="toolTip">
+          <string>Delete selected preset</string>
+         </property>
+         <property name="text">
+          <string>...</string>
+         </property>
+         <property name="icon">
+          <iconset resource="resources/res.qrc">
+           <normaloff>:/bin.png</normaloff>:/bin.png</iconset>
+         </property>
+         <property name="iconSize">
+          <size>
+           <width>16</width>
+           <height>16</height>
+          </size>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="horizontalSpacer_2">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>40</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item>
+        <widget class="QToolButton" name="presetLoad">
+         <property name="toolTip">
+          <string>Load selected preset</string>
+         </property>
+         <property name="text">
+          <string>...</string>
+         </property>
+         <property name="icon">
+          <iconset resource="resources/res.qrc">
+           <normaloff>:/load.png</normaloff>:/load.png</iconset>
+         </property>
+         <property name="iconSize">
+          <size>
+           <width>16</width>
+           <height>16</height>
+          </size>
+         </property>
+        </widget>
+       </item>
+      </layout>
      </item>
     </layout>
    </widget>
@@ -555,6 +560,206 @@
         <number>-1</number>
        </property>
       </widget>
+     </item>
+    </layout>
+   </widget>
+  </widget>
+  <widget class="QDockWidget" name="commandsDock">
+   <property name="windowTitle">
+    <string>Commands</string>
+   </property>
+   <attribute name="dockWidgetArea">
+    <number>1</number>
+   </attribute>
+   <widget class="QWidget" name="commandsDockWidget">
+    <layout class="QVBoxLayout" name="verticalLayout_5">
+     <property name="spacing">
+      <number>3</number>
+     </property>
+     <property name="leftMargin">
+      <number>2</number>
+     </property>
+     <property name="topMargin">
+      <number>2</number>
+     </property>
+     <property name="rightMargin">
+      <number>2</number>
+     </property>
+     <property name="bottomMargin">
+      <number>2</number>
+     </property>
+     <item>
+      <widget class="QTreeWidget" name="commandTree">
+       <property name="indentation">
+        <number>5</number>
+       </property>
+       <property name="allColumnsShowFocus">
+        <bool>true</bool>
+       </property>
+       <property name="columnCount">
+        <number>3</number>
+       </property>
+       <attribute name="headerMinimumSectionSize">
+        <number>5</number>
+       </attribute>
+       <column>
+        <property name="text">
+         <string>Description</string>
+        </property>
+       </column>
+       <column>
+        <property name="text">
+         <string>P/R</string>
+        </property>
+       </column>
+       <column>
+        <property name="text">
+         <string>Key</string>
+        </property>
+       </column>
+      </widget>
+     </item>
+     <item>
+      <layout class="QHBoxLayout" name="commandsControl">
+       <item>
+        <widget class="QToolButton" name="commandNew">
+         <property name="toolTip">
+          <string>Create new command</string>
+         </property>
+         <property name="text">
+          <string/>
+         </property>
+         <property name="icon">
+          <iconset resource="resources/res.qrc">
+           <normaloff>:/create.png</normaloff>:/create.png</iconset>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QToolButton" name="commandDuplicate">
+         <property name="toolTip">
+          <string>Duplicate command</string>
+         </property>
+         <property name="text">
+          <string/>
+         </property>
+         <property name="icon">
+          <iconset resource="resources/res.qrc">
+           <normaloff>:/duplicate.png</normaloff>:/duplicate.png</iconset>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QToolButton" name="commandEdit">
+         <property name="toolTip">
+          <string>Edit command details</string>
+         </property>
+         <property name="text">
+          <string/>
+         </property>
+         <property name="icon">
+          <iconset resource="resources/res.qrc">
+           <normaloff>:/edit.png</normaloff>:/edit.png</iconset>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QToolButton" name="commandRun">
+         <property name="toolTip">
+          <string>Run command</string>
+         </property>
+         <property name="text">
+          <string/>
+         </property>
+         <property name="icon">
+          <iconset resource="resources/res.qrc">
+           <normaloff>:/play.png</normaloff>:/play.png</iconset>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QToolButton" name="commandOutput">
+         <property name="toolTip">
+          <string>View last run status and output</string>
+         </property>
+         <property name="text">
+          <string/>
+         </property>
+         <property name="icon">
+          <iconset resource="resources/res.qrc">
+           <normaloff>:/listing.png</normaloff>:/listing.png</iconset>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QToolButton" name="commandsSave">
+         <property name="toolTip">
+          <string>Save commands in settings</string>
+         </property>
+         <property name="text">
+          <string/>
+         </property>
+         <property name="icon">
+          <iconset resource="resources/res.qrc">
+           <normaloff>:/save.png</normaloff>:/save.png</iconset>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="horizontalSpacer_3">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>40</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item>
+        <widget class="QToolButton" name="commandDelete">
+         <property name="toolTip">
+          <string>Delete selected command</string>
+         </property>
+         <property name="text">
+          <string/>
+         </property>
+         <property name="icon">
+          <iconset resource="resources/res.qrc">
+           <normaloff>:/bin.png</normaloff>:/bin.png</iconset>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="horizontalSpacer_4">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>40</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item>
+        <widget class="ButtonSwitch" name="commandKeyboardConnect">
+         <property name="toolTip">
+          <string>Toggle keyboard to command connection</string>
+         </property>
+         <property name="text">
+          <string/>
+         </property>
+         <property name="icon">
+          <iconset resource="resources/res.qrc">
+           <normaloff>:/keyboard.png</normaloff>:/keyboard.png</iconset>
+         </property>
+        </widget>
+       </item>
+      </layout>
      </item>
     </layout>
    </widget>
@@ -643,7 +848,7 @@
   </action>
   <action name="action_addSourceDevice">
    <property name="text">
-    <string>Add source device</string>
+    <string>Add source device set</string>
    </property>
    <property name="font">
     <font/>
@@ -651,7 +856,7 @@
   </action>
   <action name="action_removeLastDevice">
    <property name="text">
-    <string>Remove last device</string>
+    <string>Remove last device set</string>
    </property>
    <property name="font">
     <font/>
@@ -661,6 +866,9 @@
    <property name="text">
     <string>&amp;Audio</string>
    </property>
+   <property name="toolTip">
+    <string>Audio devices setting</string>
+   </property>
   </action>
   <action name="action_DV_Serial">
    <property name="checkable">
@@ -669,34 +877,48 @@
    <property name="text">
     <string>DV Serial</string>
    </property>
+   <property name="toolTip">
+    <string>Toggle AMBE DV serial device usage</string>
+   </property>
   </action>
   <action name="action_My_Position">
    <property name="text">
     <string>My Position</string>
    </property>
+   <property name="toolTip">
+    <string>Set my geo position</string>
+   </property>
   </action>
   <action name="action_addSinkDevice">
    <property name="text">
-    <string>Add sink device</string>
+    <string>Add sink device set</string>
    </property>
   </action>
-  <action name="action_reloadDevices">
+  <action name="action_Logging">
    <property name="text">
-    <string>Reload devices</string>
+    <string>Logging</string>
+   </property>
+   <property name="toolTip">
+    <string>Message logging options</string>
    </property>
   </action>
   <zorder>presetDock</zorder>
   <zorder>channelDock</zorder>
+  <zorder>commandsDock</zorder>
  </widget>
  <layoutdefault spacing="6" margin="11"/>
+ <customwidgets>
+  <customwidget>
+   <class>ButtonSwitch</class>
+   <extends>QToolButton</extends>
+   <header>gui/buttonswitch.h</header>
+  </customwidget>
+ </customwidgets>
  <tabstops>
   <tabstop>presetTree</tabstop>
-  <tabstop>presetSave</tabstop>
-  <tabstop>presetDelete</tabstop>
-  <tabstop>presetLoad</tabstop>
  </tabstops>
  <resources>
-  <include location="../sdrgui/resources/res.qrc"/>
+  <include location="resources/res.qrc"/>
  </resources>
  <connections>
   <connection>

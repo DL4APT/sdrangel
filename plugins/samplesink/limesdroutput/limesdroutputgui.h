@@ -25,8 +25,8 @@
 
 #include "limesdroutput.h"
 
-class DeviceSinkAPI;
 class DeviceSampleSink;
+class DeviceUISet;
 
 namespace Ui {
     class LimeSDROutputGUI;
@@ -36,7 +36,7 @@ class LimeSDROutputGUI : public QWidget, public PluginInstanceGUI {
     Q_OBJECT
 
 public:
-    explicit LimeSDROutputGUI(DeviceSinkAPI *deviceAPI, QWidget* parent = 0);
+    explicit LimeSDROutputGUI(DeviceUISet *deviceUISet, QWidget* parent = 0);
     virtual ~LimeSDROutputGUI();
     virtual void destroy();
 
@@ -54,7 +54,7 @@ public:
 private:
     Ui::LimeSDROutputGUI* ui;
 
-    DeviceSinkAPI* m_deviceAPI;
+    DeviceUISet* m_deviceUISet;
     LimeSDROutput* m_limeSDROutput; //!< Same object as above but gives easy access to LimeSDROutput methods and attributes that are used intensively
     LimeSDROutputSettings m_settings;
     QTimer m_updateTimer;
@@ -90,6 +90,7 @@ private slots:
     void on_lpFIR_changed(quint64 value);
     void on_gain_valueChanged(int value);
     void on_antenna_currentIndexChanged(int index);
+    void on_extClock_clicked();
 
     void updateHardware();
     void updateStatus();

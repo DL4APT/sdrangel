@@ -20,6 +20,7 @@
 #include <QObject>
 
 #include "dsp/basebandsamplesource.h"
+#include "channel/channelsourceapi.h"
 #include "dsp/basebandsamplesink.h"
 #include "dsp/interpolator.h"
 #include "dsp/movingaverage.h"
@@ -34,7 +35,7 @@ class DeviceSinkAPI;
 class ThreadedBasebandSampleSource;
 class UpChannelizer;
 
-class UDPSink : public BasebandSampleSource {
+class UDPSink : public BasebandSampleSource, public ChannelSourceAPI {
     Q_OBJECT
 
 public:
@@ -85,13 +86,25 @@ public:
         { }
     };
 
-    UDPSink(DeviceSinkAPI *deviceAPI, BasebandSampleSink* spectrum);
+    UDPSink(DeviceSinkAPI *deviceAPI);
     virtual ~UDPSink();
+    virtual void destroy() { delete this; }
+
+    void setSpectrumSink(BasebandSampleSink* spectrum) { m_spectrum = spectrum; }
 
     virtual void start();
     virtual void stop();
     virtual void pull(Sample& sample);
     virtual bool handleMessage(const Message& cmd);
+
+    virtual void getIdentifier(QString& id) { id = objectName(); }
+    virtual void getTitle(QString& title) { title = m_settings.m_title; }
+    virtual void setName(const QString& name) { setObjectName(name); }
+    virtual QString getName() const { return objectName(); }
+    virtual qint64 getCenterFrequency() const { return m_settings.m_inputFrequencyOffset; }
+
+    virtual QByteArray serialize() const;
+    virtual bool deserialize(const QByteArray& data);
 
     double getMagSq() const { return m_magsq; }
     double getInMagSq() const { return m_inMagsq; }
@@ -100,6 +113,9 @@ public:
 
     void setSpectrum(bool enabled);
     void resetReadIndex();
+
+    static const QString m_channelIdURI;
+    static const QString m_channelId;
 
 signals:
     /**
@@ -152,7 +168,11 @@ private:
     ThreadedBasebandSampleSource* m_threadedChannelizer;
     UpChannelizer* m_channelizer;
 
+    int m_basebandSampleRate;
+    Real m_outputSampleRate;
+    int m_inputFrequencyOffset;
     UDPSinkSettings m_settings;
+
     Real m_squelch;
 
     NCO m_carrierNco;
@@ -199,6 +219,7 @@ private:
     static const int m_sampleRateAverageItems = 17;
     static const int m_ssbFftLen = 1024;
 
+    void applyChannelSettings(int basebandSampleRate, int outputSampleRate, int inputFrequencyOffset, bool force = false);
     void applySettings(const UDPSinkSettings& settings, bool force = false);
     void modulateSample();
     void calculateLevel(Real sample);

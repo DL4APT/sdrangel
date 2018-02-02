@@ -8,11 +8,12 @@
 class Preset {
 public:
 	struct ChannelConfig {
-		QString m_channel;
+		QString m_channelIdURI; //!< Channel type ID in URI form
+		QString m_channelId;    //!< Channel type ID in short form from object name TODO: use in the future
 		QByteArray m_config;
 
-		ChannelConfig(const QString& channel, const QByteArray& config) :
-			m_channel(channel),
+		ChannelConfig(const QString& channelIdURI, const QByteArray& config) :
+			m_channelIdURI(channelIdURI),
 			m_config(config)
 		{ }
 	};
@@ -81,10 +82,17 @@ public:
 
 	static bool presetCompare(const Preset *p1, Preset *p2)
 	{
-	    if (p1->m_centerFrequency != p2->m_centerFrequency) {
-	        return p1->m_centerFrequency < p2->m_centerFrequency;
-	    } else {
-	        return p1->m_description < p2->m_description;
+	    if (p1->m_group != p2->m_group)
+	    {
+	        return p1->m_group < p2->m_group;
+	    }
+	    else
+	    {
+            if (p1->m_centerFrequency != p2->m_centerFrequency) {
+                return p1->m_centerFrequency < p2->m_centerFrequency;
+            } else {
+                return p1->m_description < p2->m_description;
+            }
 	    }
 	}
 

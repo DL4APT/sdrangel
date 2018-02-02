@@ -17,10 +17,11 @@
 #ifndef INCLUDE_CHANALYZERNG_H
 #define INCLUDE_CHANALYZERNG_H
 
-#include <dsp/basebandsamplesink.h>
 #include <QMutex>
 #include <vector>
 
+#include "dsp/basebandsamplesink.h"
+#include "channel/channelsinkapi.h"
 #include "dsp/interpolator.h"
 #include "dsp/ncof.h"
 #include "dsp/fftfilt.h"
@@ -33,7 +34,7 @@ class DeviceSourceAPI;
 class ThreadedBasebandSampleSink;
 class DownChannelizer;
 
-class ChannelAnalyzerNG : public BasebandSampleSink {
+class ChannelAnalyzerNG : public BasebandSampleSink, public ChannelSinkAPI {
 public:
     class MsgConfigureChannelAnalyzer : public Message {
         MESSAGE_CLASS_DECLARATION
@@ -124,6 +125,7 @@ public:
 
     ChannelAnalyzerNG(DeviceSourceAPI *deviceAPI);
 	virtual ~ChannelAnalyzerNG();
+	virtual void destroy() { delete this; }
 	void setSampleSink(BasebandSampleSink* sampleSink) { m_sampleSink = sampleSink; }
 
 	void configure(MessageQueue* messageQueue,
@@ -143,8 +145,15 @@ public:
 	virtual void stop();
 	virtual bool handleMessage(const Message& cmd);
 
-private slots:
-    void channelizerInputSampleRateChanged();
+	virtual void getIdentifier(QString& id) { id = objectName(); }
+    virtual void getTitle(QString& title) { title = objectName(); }
+    virtual qint64 getCenterFrequency() const { return m_running.m_frequency; }
+
+    virtual QByteArray serialize() const { return QByteArray(); }
+    virtual bool deserialize(const QByteArray& data __attribute__((unused))) { return false; }
+
+    static const QString m_channelIdURI;
+    static const QString m_channelId;
 
 private:
 
@@ -220,16 +229,16 @@ private:
             if (!(m_undersampleCount++ & (decim - 1))) // counter LSB bit mask for decimation by 2^(m_scaleLog2 - 1)
             {
                 m_sum /= decim;
-                m_magsq = (m_sum.real() * m_sum.real() + m_sum.imag() * m_sum.imag())/ (1<<30);
+                Real re = m_sum.real() / SDR_RX_SCALED;
+                Real im = m_sum.imag() / SDR_RX_SCALED;
+                m_magsq = re*re + im*im;
 
                 if (m_running.m_ssb & !m_usb)
                 { // invert spectrum for LSB
-                    //m_sampleBuffer.push_back(Sample(m_sum.imag() * 32768.0, m_sum.real() * 32768.0));
                     m_sampleBuffer.push_back(Sample(m_sum.imag(), m_sum.real()));
                 }
                 else
                 {
-                    //m_sampleBuffer.push_back(Sample(m_sum.real() * 32768.0, m_sum.imag() * 32768.0));
                     m_sampleBuffer.push_back(Sample(m_sum.real(), m_sum.imag()));
                 }
 

@@ -18,6 +18,9 @@
 #include <errno.h>
 #include <QDebug>
 
+#include "SWGDeviceSettings.h"
+#include "SWGDeviceState.h"
+
 #include "util/simpleserializer.h"
 #include "dsp/dspcommands.h"
 #include "dsp/dspengine.h"
@@ -25,11 +28,11 @@
 
 #include "device/devicesinkapi.h"
 
-#include "filesinkgui.h"
 #include "filesinkoutput.h"
 #include "filesinkthread.h"
 
 MESSAGE_CLASS_DEFINITION(FileSinkOutput::MsgConfigureFileSink, Message)
+MESSAGE_CLASS_DEFINITION(FileSinkOutput::MsgStartStop, Message)
 MESSAGE_CLASS_DEFINITION(FileSinkOutput::MsgConfigureFileSinkName, Message)
 MESSAGE_CLASS_DEFINITION(FileSinkOutput::MsgConfigureFileSinkWork, Message)
 MESSAGE_CLASS_DEFINITION(FileSinkOutput::MsgConfigureFileSinkStreamTiming, Message)
@@ -73,6 +76,11 @@ void FileSinkOutput::openFileStream()
     m_ofstream.write((const char *) &m_startingTimeStamp, sizeof(std::time_t));
 
 	qDebug() << "FileSinkOutput::openFileStream: " << m_fileName.toStdString().c_str();
+}
+
+void FileSinkOutput::init()
+{
+    applySettings(m_settings, true);
 }
 
 bool FileSinkOutput::start()
@@ -130,6 +138,33 @@ void FileSinkOutput::stop()
     }
 }
 
+QByteArray FileSinkOutput::serialize() const
+{
+    return m_settings.serialize();
+}
+
+bool FileSinkOutput::deserialize(const QByteArray& data)
+{
+    bool success = true;
+
+    if (!m_settings.deserialize(data))
+    {
+        m_settings.resetToDefaults();
+        success = false;
+    }
+
+    MsgConfigureFileSink* message = MsgConfigureFileSink::create(m_settings, true);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue)
+    {
+        MsgConfigureFileSink* messageToGUI = MsgConfigureFileSink::create(m_settings, true);
+        m_guiMessageQueue->push(messageToGUI);
+    }
+
+    return success;
+}
+
 const QString& FileSinkOutput::getDeviceDescription() const
 {
 	return m_deviceDescription;
@@ -145,6 +180,21 @@ quint64 FileSinkOutput::getCenterFrequency() const
 	return m_settings.m_centerFrequency;
 }
 
+void FileSinkOutput::setCenterFrequency(qint64 centerFrequency)
+{
+    FileSinkSettings settings = m_settings;
+    settings.m_centerFrequency = centerFrequency;
+
+    MsgConfigureFileSink* message = MsgConfigureFileSink::create(settings, false);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue)
+    {
+        MsgConfigureFileSink* messageToGUI = MsgConfigureFileSink::create(settings, false);
+        m_guiMessageQueue->push(messageToGUI);
+    }
+}
+
 std::time_t FileSinkOutput::getStartingTimeStamp() const
 {
 	return m_startingTimeStamp;
@@ -158,6 +208,27 @@ bool FileSinkOutput::handleMessage(const Message& message)
 		m_fileName = conf.getFileName();
 		openFileStream();
 		return true;
+	}
+	else if (MsgStartStop::match(message))
+	{
+        MsgStartStop& cmd = (MsgStartStop&) message;
+        qDebug() << "FileSinkOutput::handleMessage: MsgStartStop: " << (cmd.getStartStop() ? "start" : "stop");
+
+        if (cmd.getStartStop())
+        {
+            if (m_deviceAPI->initGeneration())
+            {
+                m_deviceAPI->startGeneration();
+                DSPEngine::instance()->startAudioInput();
+            }
+        }
+        else
+        {
+            m_deviceAPI->stopGeneration();
+            DSPEngine::instance()->stopAudioInput();
+        }
+
+        return true;
 	}
 	else if (MsgConfigureFileSink::match(message))
     {
@@ -249,3 +320,31 @@ void FileSinkOutput::applySettings(const FileSinkSettings& settings, bool force)
     }
 
 }
+
+int FileSinkOutput::webapiRunGet(
+        SWGSDRangel::SWGDeviceState& response,
+        QString& errorMessage __attribute__((unused)))
+{
+    m_deviceAPI->getDeviceEngineStateStr(*response.getState());
+    return 200;
+}
+
+int FileSinkOutput::webapiRun(
+        bool run,
+        SWGSDRangel::SWGDeviceState& response,
+        QString& errorMessage __attribute__((unused)))
+{
+    m_deviceAPI->getDeviceEngineStateStr(*response.getState());
+    MsgStartStop *message = MsgStartStop::create(run);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue)
+    {
+        MsgStartStop *messagetoGui = MsgStartStop::create(run);
+        m_guiMessageQueue->push(messagetoGui);
+    }
+
+    return 200;
+}
+
+

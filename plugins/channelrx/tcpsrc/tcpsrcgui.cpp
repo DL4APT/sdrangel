@@ -1,21 +1,19 @@
 #include "tcpsrcgui.h"
 
 #include <device/devicesourceapi.h>
+#include "device/deviceuiset.h"
 #include "plugin/pluginapi.h"
 #include "dsp/spectrumvis.h"
 #include "dsp/dspengine.h"
 #include "util/simpleserializer.h"
 #include "util/db.h"
-#include "gui/basicchannelsettingswidget.h"
 #include "ui_tcpsrcgui.h"
 #include "mainwindow.h"
 #include "tcpsrc.h"
 
-const QString TCPSrcGUI::m_channelID = "sdrangel.channel.tcpsrc";
-
-TCPSrcGUI* TCPSrcGUI::create(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI)
+TCPSrcGUI* TCPSrcGUI::create(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel)
 {
-	TCPSrcGUI* gui = new TCPSrcGUI(pluginAPI, deviceAPI);
+	TCPSrcGUI* gui = new TCPSrcGUI(pluginAPI, deviceUISet, rxChannel);
 	return gui;
 }
 
@@ -55,16 +53,6 @@ void TCPSrcGUI::resetToDefaults()
 QByteArray TCPSrcGUI::serialize() const
 {
     return m_settings.serialize();
-//	SimpleSerializer s(1);
-//	s.writeS32(2, m_channelMarker.getCenterFrequency());
-//	s.writeS32(3, m_sampleFormat);
-//	s.writeReal(4, m_outputSampleRate);
-//	s.writeReal(5, m_rfBandwidth);
-//	s.writeS32(6, m_tcpPort);
-//	s.writeBlob(7, ui->spectrumGUI->serialize());
-//	s.writeS32(8, (qint32)m_boost);
-//	s.writeS32(9, m_channelMarker.getCenterFrequency());
-//	return s.final();
 }
 
 bool TCPSrcGUI::deserialize(const QByteArray& data)
@@ -109,9 +97,16 @@ bool TCPSrcGUI::handleMessage(const Message& message)
 	}
 }
 
-void TCPSrcGUI::channelMarkerChanged()
+void TCPSrcGUI::channelMarkerChangedByCursor()
 {
+    ui->deltaFrequency->setValue(m_channelMarker.getCenterFrequency());
+    m_settings.m_inputFrequencyOffset = m_channelMarker.getCenterFrequency();
 	applySettings();
+}
+
+void TCPSrcGUI::channelMarkerHighlightedByCursor()
+{
+    setHighlighted(m_channelMarker.getHighlighted());
 }
 
 void TCPSrcGUI::tick()
@@ -121,26 +116,24 @@ void TCPSrcGUI::tick()
 	ui->channelPower->setText(QString::number(m_channelPowerDbAvg.average(), 'f', 1));
 }
 
-TCPSrcGUI::TCPSrcGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidget* parent) :
+TCPSrcGUI::TCPSrcGUI(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel, QWidget* parent) :
 	RollupWidget(parent),
 	ui(new Ui::TCPSrcGUI),
 	m_pluginAPI(pluginAPI),
-	m_deviceAPI(deviceAPI),
+	m_deviceUISet(deviceUISet),
 	m_tcpSrc(0),
 	m_channelMarker(this),
 	m_channelPowerDbAvg(40,0),
-	m_basicSettingsShown(false),
 	m_rfBandwidthChanged(false),
 	m_doApplySettings(true)
 {
 	ui->setupUi(this);
 	ui->connectedClientsBox->hide();
 	connect(this, SIGNAL(widgetRolled(QWidget*,bool)), this, SLOT(onWidgetRolled(QWidget*,bool)));
-	connect(this, SIGNAL(menuDoubleClickEvent()), this, SLOT(onMenuDoubleClicked()));
 	setAttribute(Qt::WA_DeleteOnClose, true);
 
-	m_spectrumVis = new SpectrumVis(ui->glSpectrum);
-	m_tcpSrc = new TCPSrc(m_deviceAPI);
+	m_spectrumVis = new SpectrumVis(SDR_RX_SCALEF, ui->glSpectrum);
+	m_tcpSrc = (TCPSrc*) rxChannel; //new TCPSrc(m_deviceUISet->m_deviceSourceAPI);
 	m_tcpSrc->setSpectrum(m_spectrumVis);
 
     ui->deltaFrequencyLabel->setText(QString("%1f").arg(QChar(0x94, 0x03)));
@@ -156,30 +149,35 @@ TCPSrcGUI::TCPSrcGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidget* 
 	ui->glSpectrum->connectTimer(MainWindow::getInstance()->getMasterTimer());
 	connect(&MainWindow::getInstance()->getMasterTimer(), SIGNAL(timeout()), this, SLOT(tick()));
 
+	m_channelMarker.blockSignals(true);
 	m_channelMarker.setBandwidth(16000);
 	m_channelMarker.setCenterFrequency(0);
-	m_channelMarker.setVisible(true);
     m_channelMarker.setColor(m_settings.m_rgbColor);
-    setTitleColor(m_channelMarker.getColor());
+    m_channelMarker.blockSignals(false);
+	m_channelMarker.setVisible(true); // activate signal on the last setting only
 
-	connect(&m_channelMarker, SIGNAL(changed()), this, SLOT(channelMarkerChanged()));
+	setTitleColor(m_channelMarker.getColor());
 
-	m_deviceAPI->registerChannelInstance(m_channelID, this);
-	m_deviceAPI->addChannelMarker(&m_channelMarker);
-	m_deviceAPI->addRollupWidget(this);
+	m_deviceUISet->registerRxChannelInstance(TCPSrc::m_channelIdURI, this);
+	m_deviceUISet->addChannelMarker(&m_channelMarker);
+	m_deviceUISet->addRollupWidget(this);
+
+	connect(&m_channelMarker, SIGNAL(changedByCursor()), this, SLOT(channelMarkerChangedByCursor()));
+    connect(&m_channelMarker, SIGNAL(highlightedByCursor()), this, SLOT(channelMarkerHighlightedByCursor()));
 
 	ui->spectrumGUI->setBuddies(m_spectrumVis->getInputMessageQueue(), m_spectrumVis, ui->glSpectrum);
 
     m_settings.setSpectrumGUI(ui->spectrumGUI);
     m_settings.setChannelMarker(&m_channelMarker);
 
+    displaySettings();
     applySettings();
 }
 
 TCPSrcGUI::~TCPSrcGUI()
 {
-    m_deviceAPI->removeChannelInstance(this);
-	delete m_tcpSrc;
+    m_deviceUISet->removeRxChannelInstance(this);
+	delete m_tcpSrc; // TODO: check this: when the GUI closes it has to delete the demodulator
 	delete m_spectrumVis;
 	delete ui;
 }
@@ -300,13 +298,18 @@ void TCPSrcGUI::displaySettings()
 {
     m_channelMarker.blockSignals(true);
     m_channelMarker.setCenterFrequency(m_settings.m_inputFrequencyOffset);
-    m_channelMarker.setColor(m_settings.m_rgbColor);
-    setTitleColor(m_settings.m_rgbColor);
+    m_channelMarker.setBandwidth(m_settings.m_rfBandwidth);
+    m_channelMarker.setTitle(m_settings.m_title);
     m_channelMarker.blockSignals(false);
+    m_channelMarker.setColor(m_settings.m_rgbColor); // activate signal on the last setting only
 
+    setTitleColor(m_settings.m_rgbColor);
     setWindowTitle(m_channelMarker.getTitle());
 
+    blockApplySettings(true);
+
     ui->deltaFrequency->setValue(m_channelMarker.getCenterFrequency());
+
     ui->sampleRate->setText(QString("%1").arg(m_settings.m_outputSampleRate, 0));
     setSampleFormatIndex(m_settings.m_sampleFormat);
 
@@ -316,6 +319,8 @@ void TCPSrcGUI::displaySettings()
     ui->volumeText->setText(QString("%1").arg(ui->volume->value()));
 
     ui->glSpectrum->setSampleRate(m_settings.m_outputSampleRate);
+
+    blockApplySettings(false);
 }
 
 void TCPSrcGUI::setSampleFormatIndex(const TCPSrcSettings::SampleFormat& sampleFormat)
@@ -368,16 +373,6 @@ void TCPSrcGUI::onWidgetRolled(QWidget* widget, bool rollDown)
 	if ((widget == ui->spectrumBox) && (m_tcpSrc != 0))
 	{
 		m_tcpSrc->setSpectrum(m_tcpSrc->getInputMessageQueue(), rollDown);
-	}
-}
-
-void TCPSrcGUI::onMenuDoubleClicked()
-{
-	if (!m_basicSettingsShown)
-	{
-		m_basicSettingsShown = true;
-		BasicChannelSettingsWidget* bcsw = new BasicChannelSettingsWidget(&m_channelMarker, this);
-		bcsw->show();
 	}
 }
 

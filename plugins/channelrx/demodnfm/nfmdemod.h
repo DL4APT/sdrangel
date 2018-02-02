@@ -18,10 +18,12 @@
 #ifndef INCLUDE_NFMDEMOD_H
 #define INCLUDE_NFMDEMOD_H
 
-#include <dsp/basebandsamplesink.h>
-#include <dsp/phasediscri.h>
 #include <QMutex>
 #include <vector>
+
+#include "dsp/basebandsamplesink.h"
+#include "channel/channelsinkapi.h"
+#include "dsp/phasediscri.h"
 #include "dsp/nco.h"
 #include "dsp/interpolator.h"
 #include "dsp/lowpass.h"
@@ -29,7 +31,6 @@
 #include "dsp/afsquelch.h"
 #include "dsp/agc.h"
 #include "dsp/ctcssdetector.h"
-#include "dsp/afsquelch.h"
 #include "audio/audiofifo.h"
 #include "util/message.h"
 
@@ -39,7 +40,7 @@ class DeviceSourceAPI;
 class ThreadedBasebandSampleSink;
 class DownChannelizer;
 
-class NFMDemod : public BasebandSampleSink {
+class NFMDemod : public BasebandSampleSink, public ChannelSinkAPI {
 public:
     class MsgConfigureNFMDemod : public Message {
         MESSAGE_CLASS_DECLARATION
@@ -109,11 +110,29 @@ public:
 
     NFMDemod(DeviceSourceAPI *deviceAPI);
 	~NFMDemod();
+	virtual void destroy() { delete this; }
 
 	virtual void feed(const SampleVector::const_iterator& begin, const SampleVector::const_iterator& end, bool po);
 	virtual void start();
 	virtual void stop();
 	virtual bool handleMessage(const Message& cmd);
+
+    virtual void getIdentifier(QString& id) { id = objectName(); }
+    virtual void getTitle(QString& title) { title = m_settings.m_title; }
+    virtual qint64 getCenterFrequency() const { return m_settings.m_inputFrequencyOffset; }
+
+    virtual QByteArray serialize() const;
+    virtual bool deserialize(const QByteArray& data);
+
+    virtual int webapiSettingsGet(
+            SWGSDRangel::SWGChannelSettings& response,
+            QString& errorMessage);
+
+    virtual int webapiSettingsPutPatch(
+            bool force,
+            const QStringList& channelSettingsKeys,
+            SWGSDRangel::SWGChannelSettings& response,
+            QString& errorMessage);
 
 	const Real *getCtcssToneSet(int& nbTones) const {
 		nbTones = m_ctcssDetector.getNTones();
@@ -138,6 +157,9 @@ public:
         m_magsqCount = 0;
     }
 
+    static const QString m_channelIdURI;
+    static const QString m_channelId;
+
 private:
 	enum RateState {
 		RSInitialFill,
@@ -148,6 +170,8 @@ private:
     ThreadedBasebandSampleSink* m_threadedChannelizer;
     DownChannelizer* m_channelizer;
 
+    int m_inputSampleRate;
+    int m_inputFrequencyOffset;
 	NFMDemodSettings m_settings;
 
 	NCO m_nco;
@@ -196,7 +220,9 @@ private:
     static const int m_udpBlockSize;
 
 //    void apply(bool force = false);
+    void applyChannelSettings(int inputSampleRate, int inputFrequencyOffset, bool force = false);
     void applySettings(const NFMDemodSettings& settings, bool force = false);
+    void webapiFormatChannelSettings(SWGSDRangel::SWGChannelSettings& response, const NFMDemodSettings& settings);
 };
 
 #endif // INCLUDE_NFMDEMOD_H

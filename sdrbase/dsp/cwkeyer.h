@@ -22,6 +22,8 @@
 #include <QMutex>
 
 #include "util/export.h"
+#include "util/message.h"
+#include "cwkeyersettings.h"
 
 /**
  * Ancillary class to smooth out CW transitions with a sine shape
@@ -48,13 +50,28 @@ class SDRANGEL_API CWKeyer : public QObject {
     Q_OBJECT
 
 public:
-    typedef enum
-    {
-        CWNone,
-        CWText,
-        CWDots,
-        CWDashes
-    } CWMode;
+    class MsgConfigureCWKeyer : public Message {
+        MESSAGE_CLASS_DECLARATION
+
+    public:
+        const CWKeyerSettings& getSettings() const { return m_settings; }
+        bool getForce() const { return m_force; }
+
+        static MsgConfigureCWKeyer* create(const CWKeyerSettings& settings, bool force)
+        {
+            return new MsgConfigureCWKeyer(settings, force);
+        }
+
+    private:
+        CWKeyerSettings m_settings;
+        bool m_force;
+
+        MsgConfigureCWKeyer(const CWKeyerSettings& settings, bool force) :
+            Message(),
+            m_settings(settings),
+            m_force(force)
+        { }
+    };
 
     typedef enum
     {
@@ -85,8 +102,10 @@ public:
     void setSampleRate(int sampleRate);
     void setWPM(int wpm);
     void setText(const QString& text);
-    void setMode(CWMode mode);
-    void setLoop(bool loop) { m_loop = loop; }
+    void setMode(CWKeyerSettings::CWMode mode);
+    void setLoop(bool loop) { m_settings.m_loop = loop; }
+    const CWKeyerSettings& getSettings() const { return m_settings; }
+
     void reset() { m_keyIambicState = KeySilent; }
 
     CWSmoother& getCWSmoother() { return m_cwSmoother; }
@@ -97,10 +116,8 @@ public:
 
 private:
     QMutex m_mutex;
-    int m_sampleRate;
-    int m_wpm;
+    CWKeyerSettings m_settings;
     int m_dotLength;   //!< dot length in samples
-    QString m_text;
     int m_textPointer;
     int m_elementPointer;
     int m_samplePointer;
@@ -110,9 +127,7 @@ private:
     bool m_dot;
     bool m_dash;
     bool m_elementOn;
-    bool m_loop;
     char m_asciiChar;
-    CWMode m_mode;
     CWKeyIambicState m_keyIambicState;
     CWTextState m_textState;
     CWSmoother m_cwSmoother;

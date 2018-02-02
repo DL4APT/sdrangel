@@ -26,7 +26,7 @@ struct Serializable;
 struct UDPSrcSettings
 {
     enum SampleFormat {
-        FormatS16LE,
+        FormatIQ,
         FormatNFM,
         FormatNFMMono,
         FormatLSB,
@@ -39,9 +39,15 @@ struct UDPSrcSettings
         FormatNone
     };
 
+    enum SampleSize {
+        Size16bits,
+        Size24bits,
+        SizeNone
+    };
+
     float m_outputSampleRate;
     SampleFormat m_sampleFormat;
-    float m_inputSampleRate;
+    SampleSize m_sampleSize;
     int64_t m_inputFrequencyOffset;
     float m_rfBandwidth;
     int m_fmDeviation;
@@ -59,6 +65,8 @@ struct UDPSrcSettings
     QString m_udpAddress;
     uint16_t m_udpPort;
     uint16_t m_audioPort;
+
+    QString m_title;
 
     Serializable *m_channelMarker;
     Serializable *m_spectrumGUI;

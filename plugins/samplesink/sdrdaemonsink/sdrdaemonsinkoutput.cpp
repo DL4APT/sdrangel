@@ -18,6 +18,9 @@
 #include <errno.h>
 #include <QDebug>
 
+#include "SWGDeviceSettings.h"
+#include "SWGDeviceState.h"
+
 #include "util/simpleserializer.h"
 #include "dsp/dspcommands.h"
 #include "dsp/dspengine.h"
@@ -31,6 +34,7 @@
 
 MESSAGE_CLASS_DEFINITION(SDRdaemonSinkOutput::MsgConfigureSDRdaemonSink, Message)
 MESSAGE_CLASS_DEFINITION(SDRdaemonSinkOutput::MsgConfigureSDRdaemonSinkWork, Message)
+MESSAGE_CLASS_DEFINITION(SDRdaemonSinkOutput::MsgStartStop, Message)
 MESSAGE_CLASS_DEFINITION(SDRdaemonSinkOutput::MsgConfigureSDRdaemonSinkStreamTiming, Message)
 MESSAGE_CLASS_DEFINITION(SDRdaemonSinkOutput::MsgConfigureSDRdaemonSinkChunkCorrection, Message)
 MESSAGE_CLASS_DEFINITION(SDRdaemonSinkOutput::MsgReportSDRdaemonSinkStreamTiming, Message)
@@ -83,6 +87,11 @@ bool SDRdaemonSinkOutput::start()
 	return true;
 }
 
+void SDRdaemonSinkOutput::init()
+{
+    applySettings(m_settings, true);
+}
+
 void SDRdaemonSinkOutput::stop()
 {
 	qDebug() << "SDRdaemonSinkOutput::stop";
@@ -94,6 +103,33 @@ void SDRdaemonSinkOutput::stop()
 		delete m_sdrDaemonSinkThread;
 		m_sdrDaemonSinkThread = 0;
 	}
+}
+
+QByteArray SDRdaemonSinkOutput::serialize() const
+{
+    return m_settings.serialize();
+}
+
+bool SDRdaemonSinkOutput::deserialize(const QByteArray& data)
+{
+    bool success = true;
+
+    if (!m_settings.deserialize(data))
+    {
+        m_settings.resetToDefaults();
+        success = false;
+    }
+
+    MsgConfigureSDRdaemonSink* message = MsgConfigureSDRdaemonSink::create(m_settings, true);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue)
+    {
+        MsgConfigureSDRdaemonSink* messageToGUI = MsgConfigureSDRdaemonSink::create(m_settings, true);
+        m_guiMessageQueue->push(messageToGUI);
+    }
+
+    return success;
 }
 
 const QString& SDRdaemonSinkOutput::getDeviceDescription() const
@@ -109,6 +145,21 @@ int SDRdaemonSinkOutput::getSampleRate() const
 quint64 SDRdaemonSinkOutput::getCenterFrequency() const
 {
 	return m_settings.m_centerFrequency;
+}
+
+void SDRdaemonSinkOutput::setCenterFrequency(qint64 centerFrequency)
+{
+    SDRdaemonSinkSettings settings = m_settings;
+    settings.m_centerFrequency = centerFrequency;
+
+    MsgConfigureSDRdaemonSink* message = MsgConfigureSDRdaemonSink::create(settings, false);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue)
+    {
+        MsgConfigureSDRdaemonSink* messageToGUI = MsgConfigureSDRdaemonSink::create(settings, false);
+        m_guiMessageQueue->push(messageToGUI);
+    }
 }
 
 std::time_t SDRdaemonSinkOutput::getStartingTimeStamp() const
@@ -145,6 +196,27 @@ bool SDRdaemonSinkOutput::handleMessage(const Message& message)
 
 		return true;
 	}
+    else if (MsgStartStop::match(message))
+    {
+        MsgStartStop& cmd = (MsgStartStop&) message;
+        qDebug() << "SDRdaemonSinkOutput::handleMessage: MsgStartStop: " << (cmd.getStartStop() ? "start" : "stop");
+
+        if (cmd.getStartStop())
+        {
+            if (m_deviceAPI->initGeneration())
+            {
+                m_deviceAPI->startGeneration();
+                DSPEngine::instance()->startAudioInput();
+            }
+        }
+        else
+        {
+            m_deviceAPI->stopGeneration();
+            DSPEngine::instance()->stopAudioInput();
+        }
+
+        return true;
+    }
 	else if (MsgConfigureSDRdaemonSinkStreamTiming::match(message))
 	{
         MsgReportSDRdaemonSinkStreamTiming *report;
@@ -270,5 +342,32 @@ void SDRdaemonSinkOutput::applySettings(const SDRdaemonSinkSettings& settings, b
         DSPSignalNotification *notif = new DSPSignalNotification(m_settings.m_sampleRate, m_settings.m_centerFrequency);
         m_deviceAPI->getDeviceEngineInputMessageQueue()->push(notif);
     }
-
 }
+
+int SDRdaemonSinkOutput::webapiRunGet(
+        SWGSDRangel::SWGDeviceState& response,
+        QString& errorMessage __attribute__((unused)))
+{
+    m_deviceAPI->getDeviceEngineStateStr(*response.getState());
+    return 200;
+}
+
+int SDRdaemonSinkOutput::webapiRun(
+        bool run,
+        SWGSDRangel::SWGDeviceState& response,
+        QString& errorMessage __attribute__((unused)))
+{
+    m_deviceAPI->getDeviceEngineStateStr(*response.getState());
+    MsgStartStop *message = MsgStartStop::create(run);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue)
+    {
+        MsgStartStop *messagetoGui = MsgStartStop::create(run);
+        m_guiMessageQueue->push(messagetoGui);
+    }
+
+    return 200;
+}
+
+

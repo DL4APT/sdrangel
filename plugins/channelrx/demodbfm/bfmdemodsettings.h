@@ -21,7 +21,6 @@ class Serializable;
 
 struct BFMDemodSettings
 {
-    int m_inputSampleRate;
     qint64 m_inputFrequencyOffset;
     Real m_rfBandwidth;
     Real m_afBandwidth;
@@ -36,6 +35,7 @@ struct BFMDemodSettings
     QString m_udpAddress;
     quint16 m_udpPort;
     quint32 m_rgbColor;
+    QString m_title;
 
     Serializable *m_channelMarker;
     Serializable *m_spectrumGUI;

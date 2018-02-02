@@ -25,7 +25,7 @@
 
 #include "rtlsdrinput.h"
 
-class DeviceSourceAPI;
+class DeviceUISet;
 
 namespace Ui {
 	class RTLSDRGui;
@@ -36,7 +36,7 @@ class RTLSDRGui : public QWidget, public PluginInstanceGUI {
 	Q_OBJECT
 
 public:
-	explicit RTLSDRGui(DeviceSourceAPI *deviceAPI, QWidget* parent = NULL);
+	explicit RTLSDRGui(DeviceUISet *deviceUISet, QWidget* parent = 0);
 	virtual ~RTLSDRGui();
 	virtual void destroy();
 
@@ -54,13 +54,14 @@ public:
 private:
 	Ui::RTLSDRGui* ui;
 
-	DeviceSourceAPI* m_deviceAPI;
+	DeviceUISet* m_deviceUISet;
+    bool m_doApplySettings;
 	bool m_forceSettings;
 	RTLSDRSettings m_settings;
 	QTimer m_updateTimer;
 	QTimer m_statusTimer;
 	std::vector<int> m_gains;
-	DeviceSampleSource* m_sampleSource;
+	RTLSDRInput* m_sampleSource;
     int m_sampleRate;
     quint64 m_deviceCenterFrequency; //!< Center frequency in device
 	int m_lastEngineState;
@@ -71,11 +72,13 @@ private:
 	void sendSettings();
 	void updateSampleRateAndFrequency();
 	void updateFrequencyLimits();
+    void blockApplySettings(bool block);
 
 private slots:
     void handleInputMessages();
 	void on_centerFrequency_changed(quint64 value);
 	void on_sampleRate_changed(quint64 value);
+    void on_rfBW_changed(quint64 value);
 	void on_lowSampleRate_toggled(bool checked);
 	void on_dcOffset_toggled(bool checked);
 	void on_iqImbalance_toggled(bool checked);

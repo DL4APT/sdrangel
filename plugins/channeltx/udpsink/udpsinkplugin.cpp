@@ -24,7 +24,7 @@
 
 const PluginDescriptor UDPSinkPlugin::m_pluginDescriptor = {
 	QString("UDP Channel Sink"),
-	QString("3.7.5"),
+	QString("3.10.1"),
 	QString("(c) Edouard Griffiths, F4EXB"),
 	QString("https://github.com/f4exb/sdrangel"),
 	true,
@@ -47,25 +47,22 @@ void UDPSinkPlugin::initPlugin(PluginAPI* pluginAPI)
 	m_pluginAPI = pluginAPI;
 
 	// register TCP Channel Source
-	m_pluginAPI->registerTxChannel(UDPSinkGUI::m_channelID, this);
+    m_pluginAPI->registerTxChannel(UDPSink::m_channelIdURI, UDPSink::m_channelId, this);
 }
 
-PluginInstanceGUI* UDPSinkPlugin::createTxChannel(const QString& channelName, DeviceSinkAPI *deviceAPI)
+PluginInstanceGUI* UDPSinkPlugin::createTxChannelGUI(DeviceUISet *deviceUISet, BasebandSampleSource *txChannel)
 {
-	if(channelName == UDPSinkGUI::m_channelID)
-	{
-	    UDPSinkGUI* gui = UDPSinkGUI::create(m_pluginAPI, deviceAPI);
-//		deviceAPI->registerChannelInstance("sdrangel.channel.udpsrc", gui);
-//		m_pluginAPI->addChannelRollup(gui);
-		return gui;
-	} else {
-		return 0;
-	}
+    return UDPSinkGUI::create(m_pluginAPI, deviceUISet, txChannel);
 }
 
-void UDPSinkPlugin::createInstanceUDPSink(DeviceSinkAPI *deviceAPI)
+BasebandSampleSource* UDPSinkPlugin::createTxChannelBS(DeviceSinkAPI *deviceAPI)
 {
-    UDPSinkGUI::create(m_pluginAPI, deviceAPI);
-//	deviceAPI->registerChannelInstance("sdrangel.channel.udpsrc", gui);
-//	m_pluginAPI->addChannelRollup(gui);
+    return new UDPSink(deviceAPI);
 }
+
+ChannelSourceAPI* UDPSinkPlugin::createTxChannelCS(DeviceSinkAPI *deviceAPI)
+{
+    return new UDPSink(deviceAPI);
+}
+
+

@@ -1,10 +1,16 @@
 project (sdrbase)
 
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=undefined")
+
 set(sdrbase_SOURCES
     audio/audiodeviceinfo.cpp
     audio/audiofifo.cpp
     audio/audiooutput.cpp
     audio/audioinput.cpp
+
+    channel/channelsinkapi.cpp
+    channel/channelsourceapi.cpp
+    commands/command.cpp
 
     dsp/afsquelch.cpp
     dsp/agc.cpp
@@ -13,6 +19,7 @@ set(sdrbase_SOURCES
     dsp/channelmarker.cpp
     dsp/ctcssdetector.cpp
     dsp/cwkeyer.cpp
+    dsp/cwkeyersettings.cpp
     dsp/dspcommands.cpp
     dsp/dspengine.cpp
     dsp/dspdevicesourceengine.cpp
@@ -40,9 +47,12 @@ set(sdrbase_SOURCES
     dsp/threadedbasebandsamplesink.cpp
     dsp/threadedbasebandsamplesource.cpp
     dsp/wfir.cpp
-
     dsp/devicesamplesource.cpp
     dsp/devicesamplesink.cpp
+
+    device/devicesourceapi.cpp
+    device/devicesinkapi.cpp
+    device/deviceenumerator.cpp
 
     settings/preferences.cpp
     settings/preset.cpp
@@ -57,6 +67,17 @@ set(sdrbase_SOURCES
     util/samplesourceserializer.cpp
     util/simpleserializer.cpp
     #util/spinlock.cpp
+    util/uid.cpp
+    
+    plugin/plugininterface.cpp    
+    plugin/pluginapi.cpp
+    plugin/pluginmanager.cpp
+    
+    webapi/webapiadapterinterface.cpp
+    webapi/webapirequestmapper.cpp
+    webapi/webapiserver.cpp
+    
+    mainparser.cpp
 )
 
 set(sdrbase_HEADERS
@@ -65,13 +86,19 @@ set(sdrbase_HEADERS
     audio/audiooutput.h
     audio/audioinput.h
 
+    channel/channelsinkapi.h
+    channel/channelsourceapi.h
+    commands/command.h
+
     dsp/afsquelch.h
     dsp/downchannelizer.h
     dsp/upchannelizer.h
     dsp/channelmarker.h
     dsp/complex.h
     dsp/cwkeyer.h
+    dsp/cwkeyersettings.h
     dsp/decimators.h
+    dsp/decimatorsu.h
     dsp/interpolators.h
     dsp/dspcommands.h
     dsp/dspengine.h
@@ -86,6 +113,7 @@ set(sdrbase_HEADERS
     dsp/filtermbe.h
     dsp/filerecord.h
     dsp/gfft.h
+    dsp/iirfilter.h
     dsp/interpolator.h
     dsp/hbfiltertraits.h
     dsp/inthalfbandfilter.h
@@ -115,11 +143,17 @@ set(sdrbase_HEADERS
     dsp/threadedbasebandsamplesink.h
     dsp/threadedbasebandsamplesource.h
     dsp/wfir.h
-
     dsp/devicesamplesource.h
     dsp/devicesamplesink.h
 
+    device/devicesourceapi.h
+    device/devicesinkapi.h
+    device/deviceenumerator.h
+
     plugin/plugininstancegui.h
+    plugin/plugininterface.h
+    plugin/pluginapi.h
+    plugin/pluginmanager.h
 
     settings/preferences.h
     settings/preset.h
@@ -137,6 +171,13 @@ set(sdrbase_HEADERS
     util/samplesourceserializer.h
     util/simpleserializer.h
     #util/spinlock.h
+    util/uid.h
+    
+    webapi/webapiadapterinterface.h
+    webapi/webapirequestmapper.h
+    webapi/webapiserver
+    
+    mainparser.h
 )
 
 set(sdrbase_SOURCES
@@ -198,21 +239,32 @@ if (BUILD_DEBIAN)
     include_directories(${LIBSERIALDVSRC})
 endif (BUILD_DEBIAN)
 
+set(sdrbase_RESOURCES
+    resources/res.qrc
+)
+
 add_definitions(${QT_DEFINITIONS})
 add_definitions(-DQT_SHARED)
+
+qt5_add_resources(sdrbase_RESOURCES_RCC ${sdrbase_RESOURCES})
 
 add_library(sdrbase SHARED
     ${sdrbase_SOURCES}
     ${sdrbase_HEADERS_MOC}
+    ${sdrbase_RESOURCES_RCC}
 )
 
 include_directories(
     ${CMAKE_CURRENT_BINARY_DIR}
     .
+    ${CMAKE_SOURCE_DIR}/httpserver
+    ${CMAKE_SOURCE_DIR}/swagger/sdrangel/code/qt5/client
 )
 
 target_link_libraries(sdrbase
     ${QT_LIBRARIES}
+    httpserver
+    swagger
 )
 
 if(FFTW3F_FOUND)

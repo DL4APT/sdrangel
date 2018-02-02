@@ -20,7 +20,8 @@
 #include <QObject>
 #include "plugin/plugininterface.h"
 
-class DeviceSinkAPI;
+class DeviceUISet;
+class BasebandSampleSource;
 
 class AMModPlugin : public QObject, PluginInterface {
 	Q_OBJECT
@@ -28,20 +29,19 @@ class AMModPlugin : public QObject, PluginInterface {
 	Q_PLUGIN_METADATA(IID "sdrangel.channeltx.ammod")
 
 public:
-	explicit AMModPlugin(QObject* parent = NULL);
+	explicit AMModPlugin(QObject* parent = 0);
 
 	const PluginDescriptor& getPluginDescriptor() const;
 	void initPlugin(PluginAPI* pluginAPI);
 
-	PluginInstanceGUI* createTxChannel(const QString& channelName, DeviceSinkAPI *deviceAPI);
+	virtual PluginInstanceGUI* createTxChannelGUI(DeviceUISet *deviceUISet, BasebandSampleSource *txChannel);
+	virtual BasebandSampleSource* createTxChannelBS(DeviceSinkAPI *deviceAPI);
+	virtual ChannelSourceAPI* createTxChannelCS(DeviceSinkAPI *deviceAPI);
 
 private:
 	static const PluginDescriptor m_pluginDescriptor;
 
 	PluginAPI* m_pluginAPI;
-
-private slots:
-	void createInstanceModAM(DeviceSinkAPI *deviceAPI);
 };
 
 #endif // INCLUDE_AMMODPLUGIN_H

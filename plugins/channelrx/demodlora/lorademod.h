@@ -21,7 +21,8 @@
 #include <QMutex>
 #include <vector>
 
-#include <dsp/basebandsamplesink.h>
+#include "dsp/basebandsamplesink.h"
+#include "channel/channelsinkapi.h"
 #include "dsp/nco.h"
 #include "dsp/interpolator.h"
 #include "util/message.h"
@@ -39,7 +40,7 @@ class DeviceSourceAPI;
 class ThreadedBasebandSampleSink;
 class DownChannelizer;
 
-class LoRaDemod : public BasebandSampleSink {
+class LoRaDemod : public BasebandSampleSink, public ChannelSinkAPI {
 public:
     class MsgConfigureLoRaDemod : public Message {
         MESSAGE_CLASS_DECLARATION
@@ -89,12 +90,23 @@ public:
 
 	LoRaDemod(DeviceSourceAPI* deviceAPI);
 	virtual ~LoRaDemod();
+	virtual void destroy() { delete this; }
 	void setSpectrumSink(BasebandSampleSink* sampleSink) { m_sampleSink = sampleSink; }
 
 	virtual void feed(const SampleVector::const_iterator& begin, const SampleVector::const_iterator& end, bool pO);
 	virtual void start();
 	virtual void stop();
 	virtual bool handleMessage(const Message& cmd);
+
+    virtual void getIdentifier(QString& id) { id = objectName(); }
+    virtual void getTitle(QString& title) { title = m_settings.m_title; }
+    virtual qint64 getCenterFrequency() const { return 0; }
+
+    virtual QByteArray serialize() const;
+    virtual bool deserialize(const QByteArray& data);
+
+    static const QString m_channelIdURI;
+    static const QString m_channelId;
 
 private:
 	int  detect(Complex sample, Complex angle);

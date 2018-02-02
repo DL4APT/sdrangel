@@ -104,13 +104,13 @@ void DSPEngine::stopAudioOutput()
 
 void DSPEngine::startAudioOutputImmediate()
 {
-    m_audioOutput.start(m_audioOutputDeviceIndex, m_audioOutputSampleRate);
+    m_audioOutput.startImmediate(m_audioOutputDeviceIndex, m_audioOutputSampleRate);
     m_audioOutputSampleRate = m_audioOutput.getRate(); // update with actual rate
 }
 
 void DSPEngine::stopAudioOutputImmediate()
 {
-    m_audioOutput.stop();
+    m_audioOutput.stopImmediate();
 }
 
 void DSPEngine::startAudioInput()
@@ -126,13 +126,13 @@ void DSPEngine::stopAudioInput()
 
 void DSPEngine::startAudioInputImmediate()
 {
-    m_audioInput.start(m_audioInputDeviceIndex, m_audioInputSampleRate);
+    m_audioInput.startImmediate(m_audioInputDeviceIndex, m_audioInputSampleRate);
     m_audioInputSampleRate = m_audioInput.getRate(); // update with actual rate
 }
 
 void DSPEngine::stopAudioInputImmediate()
 {
-    m_audioInput.stop();
+    m_audioInput.stopImmediate();
 }
 
 void DSPEngine::addAudioSink(AudioFifo* audioFifo)
@@ -231,9 +231,15 @@ void DSPEngine::getDVSerialNames(std::vector<std::string>& deviceNames __attribu
 #endif
 
 #ifdef DSD_USE_SERIALDV
-void DSPEngine::pushMbeFrame(const unsigned char *mbeFrame, int mbeRateIndex, int mbeVolumeIndex, unsigned char channels, AudioFifo *audioFifo)
+void DSPEngine::pushMbeFrame(
+        const unsigned char *mbeFrame,
+        int mbeRateIndex,
+        int mbeVolumeIndex,
+        unsigned char channels,
+        bool useHP,
+        AudioFifo *audioFifo)
 {
-    m_dvSerialEngine.pushMbeFrame(mbeFrame, mbeRateIndex, mbeVolumeIndex, channels, audioFifo);
+    m_dvSerialEngine.pushMbeFrame(mbeFrame, mbeRateIndex, mbeVolumeIndex, channels, useHP, audioFifo);
 }
 #else
 void DSPEngine::pushMbeFrame(
@@ -241,6 +247,7 @@ void DSPEngine::pushMbeFrame(
         int mbeRateIndex __attribute((unused)),
         int mbeVolumeIndex __attribute((unused)),
         unsigned char channels __attribute((unused)),
+        bool useHP __attribute((unused)),
         AudioFifo *audioFifo __attribute((unused)))
 {}
 #endif

@@ -21,6 +21,7 @@
 #include "atvdemodgui.h"
 
 #include "device/devicesourceapi.h"
+#include "device/deviceuiset.h"
 #include "dsp/downchannelizer.h"
 
 #include "dsp/threadedbasebandsamplesink.h"
@@ -29,18 +30,16 @@
 #include "plugin/pluginapi.h"
 #include "util/simpleserializer.h"
 #include "util/db.h"
-#include "gui/basicchannelsettingswidget.h"
 #include "dsp/dspengine.h"
 #include "mainwindow.h"
 
 #include "atvdemod.h"
 
-const QString ATVDemodGUI::m_strChannelID = "sdrangel.channel.demodatv";
-
 ATVDemodGUI* ATVDemodGUI::create(PluginAPI* objPluginAPI,
-        DeviceSourceAPI *objDeviceAPI)
+        DeviceUISet *deviceUISet,
+        BasebandSampleSink *rxChannel)
 {
-    ATVDemodGUI* gui = new ATVDemodGUI(objPluginAPI, objDeviceAPI);
+    ATVDemodGUI* gui = new ATVDemodGUI(objPluginAPI, deviceUISet, rxChannel);
     return gui;
 }
 
@@ -190,6 +189,7 @@ bool ATVDemodGUI::deserialize(const QByteArray& arrData)
 
         blockApplySettings(false);
         m_channelMarker.blockSignals(false);
+        m_channelMarker.emitChangedByAPI();
 
         lineTimeUpdate();
         topTimeUpdate();
@@ -218,24 +218,36 @@ bool ATVDemodGUI::handleMessage(const Message& objMessage)
 
         return true;
     }
+    else if (ATVDemod::MsgReportChannelSampleRateChanged::match(objMessage))
+    {
+        ATVDemod::MsgReportChannelSampleRateChanged report = (ATVDemod::MsgReportChannelSampleRateChanged&) objMessage;
+        m_inputSampleRate = report.getSampleRate();
+
+        qDebug("ATVDemodGUI::handleMessage: MsgReportChannelSampleRateChanged: %d", m_inputSampleRate);
+
+        applySettings();
+        applyRFSettings();
+
+        return true;
+    }
     else
     {
         return false;
     }
 }
 
-void ATVDemodGUI::viewChanged()
+void ATVDemodGUI::channelMarkerChangedByCursor()
 {
-    qDebug("ATVDemodGUI::viewChanged");
+    qDebug("ATVDemodGUI::channelMarkerChangedByCursor");
+    ui->deltaFrequency->setValue(m_channelMarker.getCenterFrequency());
+
     applySettings();
     applyRFSettings();
 }
 
-void ATVDemodGUI::channelSampleRateChanged()
+void ATVDemodGUI::channelMarkerHighlightedByCursor()
 {
-    qDebug("ATVDemodGUI::channelSampleRateChanged");
-    applySettings();
-    applyRFSettings();
+    setHighlighted(m_channelMarker.getHighlighted());
 }
 
 void ATVDemodGUI::handleSourceMessages()
@@ -255,43 +267,26 @@ void ATVDemodGUI::onWidgetRolled(QWidget* widget __attribute__((unused)), bool r
 {
 }
 
-void ATVDemodGUI::onMenuDoubleClicked()
-{
-    if (!m_blnBasicSettingsShown)
-    {
-        m_blnBasicSettingsShown = true;
-        BasicChannelSettingsWidget* bcsw = new BasicChannelSettingsWidget(
-                &m_channelMarker, this);
-        bcsw->show();
-    }
-}
-
-ATVDemodGUI::ATVDemodGUI(PluginAPI* objPluginAPI, DeviceSourceAPI *objDeviceAPI,
-        QWidget* objParent) :
+ATVDemodGUI::ATVDemodGUI(PluginAPI* objPluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel, QWidget* objParent) :
         RollupWidget(objParent),
         ui(new Ui::ATVDemodGUI),
         m_pluginAPI(objPluginAPI),
-        m_deviceAPI(objDeviceAPI),
+        m_deviceUISet(deviceUISet),
         m_channelMarker(this),
-        m_blnBasicSettingsShown(false),
         m_blnDoApplySettings(true),
         m_objMagSqAverage(40, 0),
-        m_intTickCount(0)
+        m_intTickCount(0),
+        m_inputSampleRate(48000)
 {
     ui->setupUi(this);
     setAttribute(Qt::WA_DeleteOnClose, true);
     connect(this, SIGNAL(widgetRolled(QWidget*,bool)), this, SLOT(onWidgetRolled(QWidget*,bool)));
-    connect(this, SIGNAL(menuDoubleClickEvent()), this, SLOT(onMenuDoubleClicked()));
 
     m_scopeVis = new ScopeVisNG(ui->glScope);
-    m_atvDemod = new ATVDemod(m_deviceAPI);
-    m_atvDemod->setScopeSink(m_scopeVis);
+    m_atvDemod = (ATVDemod*) rxChannel; //new ATVDemod(m_deviceUISet->m_deviceSourceAPI);
     m_atvDemod->setMessageQueueToGUI(getInputMessageQueue());
+    m_atvDemod->setScopeSink(m_scopeVis);
     m_atvDemod->setATVScreen(ui->screenTV);
-
-    m_channelizer = new DownChannelizer(m_atvDemod);
-    m_threadedChannelizer = new ThreadedBasebandSampleSink(m_channelizer, this);
-    m_deviceAPI->addThreadedSink(m_threadedChannelizer);
 
     ui->glScope->connectTimer(MainWindow::getInstance()->getMasterTimer());
     connect(&MainWindow::getInstance()->getMasterTimer(), SIGNAL(timeout()), this, SLOT(tick())); // 50 ms
@@ -300,23 +295,18 @@ ATVDemodGUI::ATVDemodGUI(PluginAPI* objPluginAPI, DeviceSourceAPI *objDeviceAPI,
     ui->deltaFrequency->setColorMapper(ColorMapper(ColorMapper::GrayGold));
     ui->deltaFrequency->setValueRange(false, 7, -9999999, 9999999);
 
-    connect(m_channelizer, SIGNAL(inputSampleRateChanged()), this, SLOT(channelSampleRateChanged()));
-
-    //m_objPluginAPI->addThreadedSink(m_objThreadedChannelizer);
+    m_channelMarker.blockSignals(true);
     m_channelMarker.setColor(Qt::white);
-    m_channelMarker.setMovable(false);
     m_channelMarker.setBandwidth(6000000);
     m_channelMarker.setCenterFrequency(0);
-    m_channelMarker.setVisible(true);
+    m_channelMarker.blockSignals(false);
+    m_channelMarker.setVisible(true); // activate signal on the last setting only
+
     setTitleColor(m_channelMarker.getColor());
 
-    connect(&m_channelMarker, SIGNAL(changed()), this, SLOT(viewChanged()));
-
-    m_deviceAPI->registerChannelInstance(m_strChannelID, this);
-    m_deviceAPI->addChannelMarker(&m_channelMarker);
-    m_deviceAPI->addRollupWidget(this);
-
-    //ui->screenTV->connectTimer(m_objPluginAPI->getMainWindow()->getMasterTimer());
+    m_deviceUISet->registerRxChannelInstance(ATVDemod::m_channelIdURI, this);
+    m_deviceUISet->addChannelMarker(&m_channelMarker);
+    m_deviceUISet->addRollupWidget(this);
 
     m_objMagSqAverage.resize(4, 1.0);
 
@@ -339,6 +329,8 @@ ATVDemodGUI::ATVDemodGUI(PluginAPI* objPluginAPI, DeviceSourceAPI *objDeviceAPI,
     ui->scopeGUI->changeTrigger(0, triggerData);
     ui->scopeGUI->focusOnTrigger(0); // re-focus to take changes into account in the GUI
 
+    connect(&m_channelMarker, SIGNAL(changedByCursor()), this, SLOT(channelMarkerChangedByCursor()));
+    connect(&m_channelMarker, SIGNAL(highlightedByCursor()), this, SLOT(channelMarkerHighlightedByCursor()));
     connect(getInputMessageQueue(), SIGNAL(messageEnqueued()), this, SLOT(handleSourceMessages()));
 
     QChar delta = QChar(0x94, 0x03);
@@ -347,11 +339,8 @@ ATVDemodGUI::ATVDemodGUI(PluginAPI* objPluginAPI, DeviceSourceAPI *objDeviceAPI,
 
 ATVDemodGUI::~ATVDemodGUI()
 {
-    m_deviceAPI->removeChannelInstance(this);
-    m_deviceAPI->removeThreadedSink(m_threadedChannelizer);
-    delete m_threadedChannelizer;
-    delete m_channelizer;
-    delete m_atvDemod;
+    m_deviceUISet->removeRxChannelInstance(this);
+    delete m_atvDemod; // TODO: check this: when the GUI closes it has to delete the demodulator
     delete m_scopeVis;
     delete ui;
 }
@@ -365,11 +354,9 @@ void ATVDemodGUI::applySettings()
 {
     if (m_blnDoApplySettings)
     {
-		ui->deltaFrequency->setValue(m_channelMarker.getCenterFrequency());
-
-        m_channelizer->configure(m_channelizer->getInputMessageQueue(),
-                m_channelizer->getInputSampleRate(), // always use maximum available bandwidth
+        ATVDemod::MsgConfigureChannelizer *msgChan = ATVDemod::MsgConfigureChannelizer::create(
                 m_channelMarker.getCenterFrequency());
+        m_atvDemod->getInputMessageQueue()->push(msgChan);
 
         m_atvDemod->configure(m_atvDemod->getInputMessageQueue(),
                 getNominalLineTime(ui->nbLines->currentIndex(), ui->fps->currentIndex()) + ui->lineTime->value() * m_fltLineTimeMultiplier,
@@ -386,7 +373,7 @@ void ATVDemodGUI::applySettings()
 				ui->screenTabWidget->currentIndex());
 
         qDebug() << "ATVDemodGUI::applySettings:"
-                << " m_objChannelizer.inputSampleRate: " << m_channelizer->getInputSampleRate()
+                << " m_objChannelizer.inputSampleRate: " << m_inputSampleRate
                 << " m_objATVDemod.sampleRate: " << m_atvDemod->getSampleRate();
     }
 }
@@ -396,6 +383,7 @@ void ATVDemodGUI::applyRFSettings()
     if (m_blnDoApplySettings)
     {
         m_atvDemod->configureRF(m_atvDemod->getInputMessageQueue(),
+                m_channelMarker.getCenterFrequency(),
                 (ATVDemod::ATVModulation) ui->modulation->currentIndex(),
                 ui->rfBW->value() * m_rfSliderDivisor * 1.0f,
                 ui->rfOppBW->value() * m_rfSliderDivisor * 1.0f,
@@ -409,6 +397,7 @@ void ATVDemodGUI::applyRFSettings()
 void ATVDemodGUI::setChannelMarkerBandwidth()
 {
     m_blnDoApplySettings = false; // avoid infinite recursion
+    m_channelMarker.blockSignals(true);
 
     if (ui->rfFiltering->isChecked()) // FFT filter
     {
@@ -428,12 +417,14 @@ void ATVDemodGUI::setChannelMarkerBandwidth()
         if (ui->decimatorEnable->isChecked()) {
             m_channelMarker.setBandwidth(ui->rfBW->value()*m_rfSliderDivisor);
         } else {
-            m_channelMarker.setBandwidth(m_channelizer->getInputSampleRate());
+            m_channelMarker.setBandwidth(m_inputSampleRate);
         }
 
         m_channelMarker.setSidebands(ChannelMarker::dsb);
     }
 
+    m_channelMarker.blockSignals(false);
+    m_channelMarker.emitChangedByAPI();
     m_blnDoApplySettings = true;
 }
 
@@ -464,16 +455,12 @@ void ATVDemodGUI::setRFFiltersSlidersRange(int sampleRate)
 
 void ATVDemodGUI::leaveEvent(QEvent*)
 {
-    blockApplySettings(true);
     m_channelMarker.setHighlighted(false);
-    blockApplySettings(false);
 }
 
 void ATVDemodGUI::enterEvent(QEvent*)
 {
-    blockApplySettings(true);
     m_channelMarker.setHighlighted(true);
-    blockApplySettings(false);
 }
 
 void ATVDemodGUI::tick()
@@ -487,7 +474,7 @@ void ATVDemodGUI::tick()
         if (m_atvDemod)
         {
             m_objMagSqAverage.feed(m_atvDemod->getMagSq());
-            double magSqDB = CalcDb::dbPower(m_objMagSqAverage.average() / (1<<30));
+            double magSqDB = CalcDb::dbPower(m_objMagSqAverage.average() / (SDR_RX_SCALED*SDR_RX_SCALED));
             ui->channePowerText->setText(tr("%1 dB").arg(magSqDB, 0, 'f', 1));
 
             if (m_atvDemod->getBFOLocked()) {
@@ -610,6 +597,7 @@ void ATVDemodGUI::on_decimatorEnable_toggled(bool checked __attribute__((unused)
 void ATVDemodGUI::on_deltaFrequency_changed(qint64 value)
 {
     m_channelMarker.setCenterFrequency(value);
+    applyRFSettings();
 }
 
 void ATVDemodGUI::on_bfo_valueChanged(int value)

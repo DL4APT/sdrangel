@@ -27,18 +27,20 @@
 #include "dsp/dspengine.h"
 #include "dsp/dspcommands.h"
 #include <device/devicesourceapi.h>
+#include "device/deviceuiset.h"
 
-BladerfInputGui::BladerfInputGui(DeviceSourceAPI *deviceAPI, QWidget* parent) :
+BladerfInputGui::BladerfInputGui(DeviceUISet *deviceUISet, QWidget* parent) :
 	QWidget(parent),
 	ui(new Ui::BladerfInputGui),
-	m_deviceAPI(deviceAPI),
+	m_deviceUISet(deviceUISet),
 	m_forceSettings(true),
+	m_doApplySettings(true),
 	m_settings(),
 	m_sampleSource(NULL),
 	m_sampleRate(0),
 	m_lastEngineState((DSPDeviceSourceEngine::State)-1)
 {
-    m_sampleSource = (BladerfInput*) m_deviceAPI->getSampleSource();
+    m_sampleSource = (BladerfInput*) m_deviceUISet->m_deviceSourceAPI->getSampleSource();
 
 	ui->setupUi(this);
 	ui->centerFrequency->setColorMapper(ColorMapper(ColorMapper::GrayGold));
@@ -61,6 +63,8 @@ BladerfInputGui::BladerfInputGui(DeviceSourceAPI *deviceAPI, QWidget* parent) :
 	displaySettings();
 
 	connect(&m_inputMessageQueue, SIGNAL(messageEnqueued()), this, SLOT(handleInputMessages()), Qt::QueuedConnection);
+
+	sendSettings();
 }
 
 BladerfInputGui::~BladerfInputGui()
@@ -120,9 +124,30 @@ bool BladerfInputGui::deserialize(const QByteArray& data)
 	}
 }
 
-bool BladerfInputGui::handleMessage(const Message& message __attribute__((unused)))
+bool BladerfInputGui::handleMessage(const Message& message)
 {
-    return false;
+    if (BladerfInput::MsgConfigureBladerf::match(message))
+    {
+        const BladerfInput::MsgConfigureBladerf& cfg = (BladerfInput::MsgConfigureBladerf&) message;
+        m_settings = cfg.getSettings();
+        blockApplySettings(true);
+        displaySettings();
+        blockApplySettings(false);
+        return true;
+    }
+    else if (BladerfInput::MsgStartStop::match(message))
+    {
+        BladerfInput::MsgStartStop& notif = (BladerfInput::MsgStartStop&) message;
+        blockApplySettings(true);
+        ui->startStop->setChecked(notif.getStartStop());
+        blockApplySettings(false);
+
+        return true;
+    }
+    else
+    {
+        return false;
+    }
 }
 
 void BladerfInputGui::handleInputMessages()
@@ -143,19 +168,28 @@ void BladerfInputGui::handleInputMessages()
 
             delete message;
         }
+        else
+        {
+            if (handleMessage(*message))
+            {
+                delete message;
+            }
+        }
     }
 }
 
 void BladerfInputGui::updateSampleRateAndFrequency()
 {
-    m_deviceAPI->getSpectrum()->setSampleRate(m_sampleRate);
-    m_deviceAPI->getSpectrum()->setCenterFrequency(m_deviceCenterFrequency);
+    m_deviceUISet->getSpectrum()->setSampleRate(m_sampleRate);
+    m_deviceUISet->getSpectrum()->setCenterFrequency(m_deviceCenterFrequency);
     ui->deviceRateLabel->setText(tr("%1k").arg(QString::number(m_sampleRate / 1000.0f, 'g', 5)));
 }
 
 void BladerfInputGui::displaySettings()
 {
-	ui->centerFrequency->setValue(m_settings.m_centerFrequency / 1000);
+    blockApplySettings(true);
+
+    ui->centerFrequency->setValue(m_settings.m_centerFrequency / 1000);
 	ui->sampleRate->setValue(m_settings.m_devSampleRate);
 
 	ui->dcOffset->setChecked(m_settings.m_dcBlock);
@@ -177,6 +211,8 @@ void BladerfInputGui::displaySettings()
 	ui->vga2->setValue(m_settings.m_vga2);
 
 	ui->xb200->setCurrentIndex(getXb200Index(m_settings.m_xb200, m_settings.m_xb200Path, m_settings.m_xb200Filter));
+
+	blockApplySettings(false);
 }
 
 void BladerfInputGui::sendSettings()
@@ -331,18 +367,10 @@ void BladerfInputGui::on_xb200_currentIndexChanged(int index)
 
 void BladerfInputGui::on_startStop_toggled(bool checked)
 {
-    if (checked)
+    if (m_doApplySettings)
     {
-        if (m_deviceAPI->initAcquisition())
-        {
-            m_deviceAPI->startAcquisition();
-            DSPEngine::instance()->startAudioOutput();
-        }
-    }
-    else
-    {
-        m_deviceAPI->stopAcquisition();
-        DSPEngine::instance()->stopAudioOutput();
+        BladerfInput::MsgStartStop *message = BladerfInput::MsgStartStop::create(checked);
+        m_sampleSource->getInputMessageQueue()->push(message);
     }
 }
 
@@ -360,16 +388,24 @@ void BladerfInputGui::on_record_toggled(bool checked)
 
 void BladerfInputGui::updateHardware()
 {
-	qDebug() << "BladerfGui::updateHardware";
-	BladerfInput::MsgConfigureBladerf* message = BladerfInput::MsgConfigureBladerf::create(m_settings, m_forceSettings);
-	m_sampleSource->getInputMessageQueue()->push(message);
-	m_forceSettings = false;
-	m_updateTimer.stop();
+    if (m_doApplySettings)
+    {
+        qDebug() << "BladerfGui::updateHardware";
+        BladerfInput::MsgConfigureBladerf* message = BladerfInput::MsgConfigureBladerf::create(m_settings, m_forceSettings);
+        m_sampleSource->getInputMessageQueue()->push(message);
+        m_forceSettings = false;
+        m_updateTimer.stop();
+    }
+}
+
+void BladerfInputGui::blockApplySettings(bool block)
+{
+    m_doApplySettings = !block;
 }
 
 void BladerfInputGui::updateStatus()
 {
-    int state = m_deviceAPI->state();
+    int state = m_deviceUISet->m_deviceSourceAPI->state();
 
     if(m_lastEngineState != state)
     {
@@ -386,7 +422,7 @@ void BladerfInputGui::updateStatus()
                 break;
             case DSPDeviceSourceEngine::StError:
                 ui->startStop->setStyleSheet("QToolButton { background-color : red; }");
-                QMessageBox::information(this, tr("Message"), m_deviceAPI->errorMessage());
+                QMessageBox::information(this, tr("Message"), m_deviceUISet->m_deviceSourceAPI->errorMessage());
                 break;
             default:
                 break;

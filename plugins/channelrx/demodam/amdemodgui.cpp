@@ -20,6 +20,7 @@
 #include "amdemodgui.h"
 
 #include "device/devicesourceapi.h"
+#include "device/deviceuiset.h"
 #include "dsp/downchannelizer.h"
 
 #include "dsp/threadedbasebandsamplesink.h"
@@ -33,17 +34,15 @@
 
 #include "amdemod.h"
 
-const QString AMDemodGUI::m_channelID = "de.maintech.sdrangelove.channel.am";
-
-AMDemodGUI* AMDemodGUI::create(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI)
+AMDemodGUI* AMDemodGUI::create(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel)
 {
-	AMDemodGUI* gui = new AMDemodGUI(pluginAPI, deviceAPI);
+	AMDemodGUI* gui = new AMDemodGUI(pluginAPI, deviceUISet, rxChannel);
 	return gui;
 }
 
 void AMDemodGUI::destroy()
 {
-	delete this; // TODO: is this really useful?
+	delete this;
 }
 
 void AMDemodGUI::setName(const QString& name)
@@ -95,16 +94,16 @@ bool AMDemodGUI::handleMessage(const Message& message __attribute__((unused)))
 	return false;
 }
 
-void AMDemodGUI::channelMarkerChanged()
+void AMDemodGUI::channelMarkerChangedByCursor()
 {
-    setWindowTitle(m_channelMarker.getTitle());
+    ui->deltaFrequency->setValue(m_channelMarker.getCenterFrequency());
     m_settings.m_inputFrequencyOffset = m_channelMarker.getCenterFrequency();
-    m_settings.m_udpAddress = m_channelMarker.getUDPAddress(),
-    m_settings.m_udpPort =  m_channelMarker.getUDPSendPort(),
-    m_settings.m_rgbColor = m_channelMarker.getColor().rgb();
-    displayUDPAddress();
-    //m_settings.m_channelMarkerBytes = m_channelMarker.serialize();
 	applySettings();
+}
+
+void AMDemodGUI::channelMarkerHighlightedByCursor()
+{
+    setHighlighted(m_channelMarker.getHighlighted());
 }
 
 void AMDemodGUI::on_deltaFrequency_changed(qint64 value)
@@ -167,13 +166,25 @@ void AMDemodGUI::onMenuDialogCalled(const QPoint &p)
     BasicChannelSettingsDialog dialog(&m_channelMarker, this);
     dialog.move(p);
     dialog.exec();
+
+    m_settings.m_inputFrequencyOffset = m_channelMarker.getCenterFrequency();
+    m_settings.m_udpAddress = m_channelMarker.getUDPAddress(),
+    m_settings.m_udpPort =  m_channelMarker.getUDPSendPort(),
+    m_settings.m_rgbColor = m_channelMarker.getColor().rgb();
+    m_settings.m_title = m_channelMarker.getTitle();
+
+    setWindowTitle(m_settings.m_title);
+    setTitleColor(m_settings.m_rgbColor);
+    displayUDPAddress();
+
+    applySettings();
 }
 
-AMDemodGUI::AMDemodGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidget* parent) :
+AMDemodGUI::AMDemodGUI(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel, QWidget* parent) :
 	RollupWidget(parent),
 	ui(new Ui::AMDemodGUI),
 	m_pluginAPI(pluginAPI),
-	m_deviceAPI(deviceAPI),
+	m_deviceUISet(deviceUISet),
 	m_channelMarker(this),
 	m_doApplySettings(true),
 	m_squelchOpen(false),
@@ -184,7 +195,7 @@ AMDemodGUI::AMDemodGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidget
 	connect(this, SIGNAL(widgetRolled(QWidget*,bool)), this, SLOT(onWidgetRolled(QWidget*,bool)));
     connect(this, SIGNAL(customContextMenuRequested(const QPoint &)), this, SLOT(onMenuDialogCalled(const QPoint &)));
 
-	m_amDemod = new AMDemod(m_deviceAPI);
+	m_amDemod = (AMDemod*) rxChannel; //new AMDemod(m_deviceUISet->m_deviceSourceAPI);
 
 	connect(&MainWindow::getInstance()->getMasterTimer(), SIGNAL(timeout()), this, SLOT(tick())); // 50 ms
 
@@ -193,30 +204,34 @@ AMDemodGUI::AMDemodGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidget
     ui->deltaFrequency->setValueRange(false, 7, -9999999, 9999999);
 	ui->channelPowerMeter->setColorTheme(LevelMeterSignalDB::ColorGreenAndBlue);
 
+	m_channelMarker.blockSignals(true);
 	m_channelMarker.setColor(Qt::yellow);
 	m_channelMarker.setBandwidth(5000);
 	m_channelMarker.setCenterFrequency(0);
     m_channelMarker.setTitle("AM Demodulator");
     m_channelMarker.setUDPAddress("127.0.0.1");
     m_channelMarker.setUDPSendPort(9999);
-    m_channelMarker.setVisible(true);
+    m_channelMarker.blockSignals(false);
+    m_channelMarker.setVisible(true); // activate signal on the last setting only
+
     setTitleColor(m_channelMarker.getColor());
     m_settings.setChannelMarker(&m_channelMarker);
 
-	connect(&m_channelMarker, SIGNAL(changed()), this, SLOT(channelMarkerChanged()));
+    m_deviceUISet->registerRxChannelInstance(AMDemod::m_channelIdURI, this);
+	m_deviceUISet->addChannelMarker(&m_channelMarker);
+	m_deviceUISet->addRollupWidget(this);
 
-	m_deviceAPI->registerChannelInstance(m_channelID, this);
-    m_deviceAPI->addChannelMarker(&m_channelMarker);
-    m_deviceAPI->addRollupWidget(this);
+	connect(&m_channelMarker, SIGNAL(changedByCursor()), this, SLOT(channelMarkerChangedByCursor()));
+    connect(&m_channelMarker, SIGNAL(highlightedByCursor()), this, SLOT(channelMarkerHighlightedByCursor()));
 
-    displaySettings();
+	displaySettings();
 	applySettings(true);
 }
 
 AMDemodGUI::~AMDemodGUI()
 {
-    m_deviceAPI->removeChannelInstance(this);
-	delete m_amDemod;
+    m_deviceUISet->removeRxChannelInstance(this);
+	delete m_amDemod; // TODO: check this: when the GUI closes it has to delete the demodulator
 	delete ui;
 }
 
@@ -229,13 +244,10 @@ void AMDemodGUI::applySettings(bool force)
 {
 	if (m_doApplySettings)
 	{
-		setTitleColor(m_channelMarker.getColor());
-
 		AMDemod::MsgConfigureChannelizer* channelConfigMsg = AMDemod::MsgConfigureChannelizer::create(
 		        48000, m_channelMarker.getCenterFrequency());
 		m_amDemod->getInputMessageQueue()->push(channelConfigMsg);
 
-		ui->deltaFrequency->setValue(m_channelMarker.getCenterFrequency());
 
 	    AMDemod::MsgConfigureAMDemod* message = AMDemod::MsgConfigureAMDemod::create( m_settings, force);
 	    m_amDemod->getInputMessageQueue()->push(message);
@@ -247,13 +259,17 @@ void AMDemodGUI::displaySettings()
     m_channelMarker.blockSignals(true);
     m_channelMarker.setCenterFrequency(m_settings.m_inputFrequencyOffset);
     m_channelMarker.setBandwidth(m_settings.m_rfBandwidth);
-    m_channelMarker.setColor(m_settings.m_rgbColor);
-    setTitleColor(m_settings.m_rgbColor);
+    m_channelMarker.setTitle(m_settings.m_title);
     m_channelMarker.blockSignals(false);
+    m_channelMarker.setColor(m_settings.m_rgbColor); // activate signal on the last setting only
 
+    setTitleColor(m_settings.m_rgbColor);
     setWindowTitle(m_channelMarker.getTitle());
+    displayUDPAddress();
 
     blockApplySettings(true);
+
+    ui->deltaFrequency->setValue(m_channelMarker.getCenterFrequency());
 
     int displayValue = m_settings.m_rfBandwidth/100.0;
     ui->rfBW->setValue(displayValue);
@@ -274,21 +290,17 @@ void AMDemodGUI::displaySettings()
 
 void AMDemodGUI::displayUDPAddress()
 {
-    ui->copyAudioToUDP->setToolTip(QString("Copy audio output to UDP %1:%2").arg(m_channelMarker.getUDPAddress()).arg(m_channelMarker.getUDPSendPort()));
+    ui->copyAudioToUDP->setToolTip(QString("Copy audio output to UDP %1:%2").arg(m_settings.m_udpAddress).arg(m_settings.m_udpPort));
 }
 
 void AMDemodGUI::leaveEvent(QEvent*)
 {
-	blockApplySettings(true);
 	m_channelMarker.setHighlighted(false);
-	blockApplySettings(false);
 }
 
 void AMDemodGUI::enterEvent(QEvent*)
 {
-	blockApplySettings(true);
 	m_channelMarker.setHighlighted(true);
-	blockApplySettings(false);
 }
 
 void AMDemodGUI::tick()

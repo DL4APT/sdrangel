@@ -19,11 +19,12 @@
 #include "plugin/pluginapi.h"
 
 #include "wfmmodgui.h"
+#include "wfmmod.h"
 #include "wfmmodplugin.h"
 
 const PluginDescriptor WFMModPlugin::m_pluginDescriptor = {
     QString("WFM Modulator"),
-    QString("3.7.4"),
+    QString("3.10.1"),
     QString("(c) Edouard Griffiths, F4EXB"),
     QString("https://github.com/f4exb/sdrangel"),
     true,
@@ -46,21 +47,22 @@ void WFMModPlugin::initPlugin(PluginAPI* pluginAPI)
 	m_pluginAPI = pluginAPI;
 
 	// register AM modulator
-	m_pluginAPI->registerTxChannel(WFMModGUI::m_channelID, this);
+	m_pluginAPI->registerTxChannel(WFMMod::m_channelIdURI, WFMMod::m_channelId, this);
 }
 
-PluginInstanceGUI* WFMModPlugin::createTxChannel(const QString& channelName, DeviceSinkAPI *deviceAPI)
+PluginInstanceGUI* WFMModPlugin::createTxChannelGUI(DeviceUISet *deviceUISet, BasebandSampleSource *txChannel)
 {
-	if(channelName == WFMModGUI::m_channelID)
-	{
-	    WFMModGUI* gui = WFMModGUI::create(m_pluginAPI, deviceAPI);
-		return gui;
-	} else {
-		return 0;
-	}
+    return WFMModGUI::create(m_pluginAPI, deviceUISet, txChannel);
 }
 
-void WFMModPlugin::createInstanceModWFM(DeviceSinkAPI *deviceAPI)
+BasebandSampleSource* WFMModPlugin::createTxChannelBS(DeviceSinkAPI *deviceAPI)
 {
-    WFMModGUI::create(m_pluginAPI, deviceAPI);
+    return new WFMMod(deviceAPI);
 }
+
+ChannelSourceAPI* WFMModPlugin::createTxChannelCS(DeviceSinkAPI *deviceAPI)
+{
+    return new WFMMod(deviceAPI);
+}
+
+

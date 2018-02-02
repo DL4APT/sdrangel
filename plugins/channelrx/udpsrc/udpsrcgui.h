@@ -29,7 +29,7 @@
 #include "udpsrcsettings.h"
 
 class PluginAPI;
-class DeviceSourceAPI;
+class DeviceUISet;
 class UDPSrc;
 class SpectrumVis;
 
@@ -41,7 +41,7 @@ class UDPSrcGUI : public RollupWidget, public PluginInstanceGUI {
 	Q_OBJECT
 
 public:
-	static UDPSrcGUI* create(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI);
+	static UDPSrcGUI* create(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel);
 	virtual void destroy();
 
 	void setName(const QString& name);
@@ -55,31 +55,14 @@ public:
 	virtual MessageQueue *getInputMessageQueue() { return &m_inputMessageQueue; }
 	virtual bool handleMessage(const Message& message);
 
-	static const QString m_channelID;
-
-private slots:
-	void channelMarkerChanged();
-	void on_deltaFrequency_changed(qint64 value);
-	void on_sampleFormat_currentIndexChanged(int index);
-	void on_sampleRate_textEdited(const QString& arg1);
-	void on_rfBandwidth_textEdited(const QString& arg1);
-	void on_fmDeviation_textEdited(const QString& arg1);
-	void on_audioActive_toggled(bool active);
-	void on_audioStereo_toggled(bool stereo);
-	void on_applyBtn_clicked();
-	void onWidgetRolled(QWidget* widget, bool rollDown);
-	void onMenuDialogCalled(const QPoint& p);
-	void on_gain_valueChanged(int value);
-	void on_volume_valueChanged(int value);
-	void on_squelch_valueChanged(int value);
-    void on_squelchGate_valueChanged(int value);
-	void on_agc_toggled(bool agc);
-	void tick();
+public slots:
+	void channelMarkerChangedByCursor();
+    void channelMarkerHighlightedByCursor();
 
 private:
 	Ui::UDPSrcGUI* ui;
 	PluginAPI* m_pluginAPI;
-	DeviceSourceAPI* m_deviceAPI;
+	DeviceUISet* m_deviceUISet;
 	UDPSrc* m_udpSrc;
 	UDPSrcSettings m_settings;
 	ChannelMarker m_channelMarker;
@@ -95,7 +78,7 @@ private:
 	// RF path
 	SpectrumVis* m_spectrumVis;
 
-	explicit UDPSrcGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidget* parent = 0);
+	explicit UDPSrcGUI(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel, QWidget* parent = 0);
 	virtual ~UDPSrcGUI();
 
     void blockApplySettings(bool block);
@@ -108,6 +91,25 @@ private:
 
 	void leaveEvent(QEvent*);
 	void enterEvent(QEvent*);
+
+private slots:
+	void on_deltaFrequency_changed(qint64 value);
+	void on_sampleFormat_currentIndexChanged(int index);
+    void on_sampleSize_currentIndexChanged(int index);
+	void on_sampleRate_textEdited(const QString& arg1);
+	void on_rfBandwidth_textEdited(const QString& arg1);
+	void on_fmDeviation_textEdited(const QString& arg1);
+	void on_audioActive_toggled(bool active);
+	void on_audioStereo_toggled(bool stereo);
+	void on_applyBtn_clicked();
+	void onWidgetRolled(QWidget* widget, bool rollDown);
+	void onMenuDialogCalled(const QPoint& p);
+	void on_gain_valueChanged(int value);
+	void on_volume_valueChanged(int value);
+	void on_squelch_valueChanged(int value);
+    void on_squelchGate_valueChanged(int value);
+	void on_agc_toggled(bool agc);
+	void tick();
 };
 
 #endif // INCLUDE_UDPSRCGUI_H

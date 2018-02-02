@@ -17,12 +17,13 @@
 #ifndef PLUGINS_SAMPLESOURCE_SDRPLAY_SDRPLAYINPUT_H_
 #define PLUGINS_SAMPLESOURCE_SDRPLAY_SDRPLAYINPUT_H_
 
-#include <dsp/devicesamplesource.h>
-
-#include "sdrplaysettings.h"
-#include <mirisdr.h>
 #include <QString>
+#include <QByteArray>
 #include <stdint.h>
+
+#include <mirisdr.h>
+#include <dsp/devicesamplesource.h>
+#include "sdrplaysettings.h"
 
 class DeviceSourceAPI;
 class SDRPlayThread;
@@ -30,6 +31,14 @@ class FileRecord;
 
 class SDRPlayInput : public DeviceSampleSource {
 public:
+    enum SDRPlayVariant
+    {
+        SDRPlayUndef,
+        SDRPlayRSP1,
+        SDRPlayRSP1A,
+        SDRPlayRSP2
+    };
+
     class MsgConfigureSDRPlay : public Message {
         MESSAGE_CLASS_DECLARATION
 
@@ -101,27 +110,64 @@ public:
         { }
     };
 
+    class MsgStartStop : public Message {
+        MESSAGE_CLASS_DECLARATION
+
+    public:
+        bool getStartStop() const { return m_startStop; }
+
+        static MsgStartStop* create(bool startStop) {
+            return new MsgStartStop(startStop);
+        }
+
+    protected:
+        bool m_startStop;
+
+        MsgStartStop(bool startStop) :
+            Message(),
+            m_startStop(startStop)
+        { }
+    };
+
     SDRPlayInput(DeviceSourceAPI *deviceAPI);
     virtual ~SDRPlayInput();
     virtual void destroy();
 
+    virtual void init();
     virtual bool start();
     virtual void stop();
 
+    virtual QByteArray serialize() const;
+    virtual bool deserialize(const QByteArray& data);
+
+    virtual void setMessageQueueToGUI(MessageQueue *queue) { m_guiMessageQueue = queue; }
     virtual const QString& getDeviceDescription() const;
     virtual int getSampleRate() const;
     virtual quint64 getCenterFrequency() const;
+    virtual void setCenterFrequency(qint64 centerFrequency);
 
     virtual bool handleMessage(const Message& message);
+
+    virtual int webapiRunGet(
+            SWGSDRangel::SWGDeviceState& response,
+            QString& errorMessage);
+
+    virtual int webapiRun(
+            bool run,
+            SWGSDRangel::SWGDeviceState& response,
+            QString& errorMessage);
+
+    SDRPlayVariant getVariant() const { return m_variant; }
 
 private:
     bool openDevice();
     void closeDevice();
     bool applySettings(const SDRPlaySettings& settings, bool forwardChange, bool force);
-    bool setCenterFrequency(quint64 freq);
+    bool setDeviceCenterFrequency(quint64 freq);
 
     DeviceSourceAPI *m_deviceAPI;
     QMutex m_mutex;
+    SDRPlayVariant m_variant;
     SDRPlaySettings m_settings;
     mirisdr_dev_t* m_dev;
     SDRPlayThread* m_sdrPlayThread;

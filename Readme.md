@@ -1,6 +1,8 @@
 ![SDR Angel banner](doc/img/sdrangel_banner.png)
 
-**SDRangel** is an Open Source Qt5 / OpenGL 3.0+ SDR and signal analyzer frontend to various hardware.
+**SDRangel** is an Open Source Qt5 / OpenGL 3.0+ (Linux) 4.3+ (Windows 64) SDR and signal analyzer frontend to various hardware.
+
+**Check the discussion group** [here](https://groups.io/g/sdrangel)
 
 <h1>Source code</h1>
 
@@ -8,7 +10,6 @@
 
 - master: the production branch
 - dev: the development branch
-- fix: production fixes that can't wait
 - legacy: the modified code from the parent application [hexameron rtl-sdrangelove](https://github.com/hexameron/rtl-sdrangelove) before a major redeisign of the code was carried out and sync was lost.
 
 <h2>Untested plugins</h2>
@@ -25,7 +26,6 @@ channelrx:
 These plugins are still present at least in the code but have been superceded:
 
   - chanalyzer: the Channel Analyzer channel plugin is superceded by the "new generation" Channel Analyzer NG (chanalyzerng)
-  - sdrdaemon: the SDRdaemon input plugin is superceded by the SDRdaemon source input plugin (sdrdaemonsource). The plugin is not part of the build anymore.
 
 <h1>Specific features</h1>
 
@@ -63,7 +63,7 @@ In case you cannot see anything related to HDMI or your desired audio device in 
 
 <h2>Airspy</h2>
 
-Airspy is supported through the libairspy library that should be installed in your system for proper build of the software and operation support. Add `libairspy-dev` to the list of dependencies to install.
+[Airspy R2](https://airspy.com/airspy-r2/) and [Airspy Mini](https://airspy.com/airspy-mini/) are supported through the libairspy library that should be installed in your system for proper build of the software and operation support. Add `libairspy-dev` to the list of dependencies to install.
 
 If you use your own location for libairspy install directory you need to specify library and include locations. Example with `/opt/install/libairspy` with the following defines on `cmake` command line:
 
@@ -73,9 +73,19 @@ Please note that if you are using a recent version of libairspy (>= 1.0.6) the d
 
 Be also aware that the lower rates (2.5 MS/s or 5 MS/s with modified firmware) are affected by a noise artifact so 10 MS/s is preferable for weak signal work or instrumentation. A decimation by 64 was implemented to facilitate narrow band work at 10 MS/s input rate.
 
+<h2>Airspy HF+</h2>
+
+[Airspy HF+](https://airspy.com/airspy-hf-plus/) is supported through [my fork of the airspyhf library](https://github.com/f4exb/airspyhf). This is needed because SDRangel uses integer samples at its input. The original library post processes the integer samples from the device and presents them as float samples without any other option. The maintainer of the original airspyhf library not being cooperative I had to keep changes on my own fork.
+
+If you use your own location for libairspyhf install directory you need to specify library and include locations. Example with `/opt/install/libairspyhf` with the following defines on `cmake` command line:
+
+`-DLIBAIRSPYHF_LIBRARIES=/opt/install/libairspyhf/lib/libairspyhf.so -DLIBAIRSPYHF_INCLUDE_DIR=/opt/install/libairspyhf/include`
+
+It is recommended to add `-DRX_SAMPLE_24BIT` on the cmake command line to activate the Rx 24 bit DSP build and take advantage of improved dynamic range when using decimation.
+
 <h2>BladeRF</h2>
 
-BladeRF is supported through the libbladerf library that should be installed in your system for proper build of the software and operation support. Add `libbladerf-dev` to the list of dependencies to install.
+[BladeRF](https://www.nuand.com/) is supported through the libbladerf library that should be installed in your system for proper build of the software and operation support. Add `libbladerf-dev` to the list of dependencies to install.
 
 If you use your own location for libbladeRF install directory you need to specify library and include locations. Example with `/opt/install/libbladerf` with the following defines on `cmake` command line:
 
@@ -93,7 +103,7 @@ The Pro+ has trouble starting. The sound card interface is not recognized when y
 
 <h2>HackRF</h2>
 
-HackRF is supported through the libhackrf library that should be installed in your system for proper build of the software and operation support. Add `libhackrf-dev` to the list of dependencies to install. Please note that you will need a recent version (2015.07.2 at least) of libhackrf that supports the sequential listing of devices and the antenna power control (bias tee). To be safe anyway you may choose to build and install the Github version: `https://github.com/mossmann/hackrf.git`. Note also that the firmware must be updated to match the library version as per instructions found in the HackRF wiki.
+[HackRF](https://greatscottgadgets.com/hackrf/) is supported through the libhackrf library that should be installed in your system for proper build of the software and operation support. Add `libhackrf-dev` to the list of dependencies to install. Please note that you will need a recent version (2015.07.2 at least) of libhackrf that supports the sequential listing of devices and the antenna power control (bias tee). To be safe anyway you may choose to build and install the Github version: `https://github.com/mossmann/hackrf.git`. Note also that the firmware must be updated to match the library version as per instructions found in the HackRF wiki.
 
 If you use your own location for libhackrf install directory you need to specify library and include locations. Example with `/opt/install/libhackrf` with the following defines on `cmake` command line:
 
@@ -103,9 +113,13 @@ HackRF is better used with a sampling rate of 4.8 MS/s and above. The 2.4 and 3.
 
 <h2>LimeSDR</h2>
 
-<b>&#9888; LimeSuite library is difficult to implement due to the lack of documentation. The plugins should work normally when running as single instances. Support of many Rx and/or Tx instances running concurrently is considered experimental.</b>
+[LimeSDR](https://myriadrf.org/projects/limesdr/) and its smaller clone LimeSDR Mini are supported using LimeSuite library (see next).
 
-You will need a minimal installation of LimeSuite:
+<p><b>&#9888; The plugins should work normally when running as single instances. Support of many Rx and/or Tx instances running concurrently is considered experimental. At least you should always have one of the streams running.</b></p>
+
+<p>&#9888; It seems LimeSDR mini has trouble working with host sample rates lower than 2.5 MS/s particularly in Tx mode.</p>
+
+You will need a minimal installation of LimeSuite. Presently commit 04b57e0 or later should be used with its corresponding firmware (v4) and gateware (v2.12) installed in the LimeSDR device:
 
   - `sudo apt-get install libsqlite3-dev`
   - `git clone https://github.com/myriadrf/LimeSuite.git`
@@ -122,9 +136,9 @@ Then add the following defines on `cmake` command line:
 
 <h2>PlutoSDR</h2>
 
-PlutoSDR (Rx only) is supported with the libiio interface. This library should be installed in your system for proper build of the software and operation support. Add `libiio-dev` to the list of dependencies to install. Be aware that version 0.10 is needed and is not available yet in all distributions. You may have to compile it from source instead.
+[PlutoSDR](https://wiki.analog.com/university/tools/pluto) is supported with the libiio interface. This library should be installed in your system for proper build of the software and operation support. Add `libiio-dev` to the list of dependencies to install. Be aware that version 0.10 is needed and is not available yet in all distributions. You may have to compile it from source instead.
 
-If you use your own location for libiio install directory you need to specify library and include locations. Example with `/opt/install/libiio` with the following defines on `cmake` command line: `-DLIBIIO_INCLUDE_DIR=/opt/install/libiio/include -DLIBIIO_LIBRARY=/opt/install/libiio/lib/libiio.so`
+If you use your own location for libiio install directory you need to specify library and include locations. Example with `/opt/install/libiio` with the following defines on `cmake` command line: `-DLIBIIO_INCLUDE_DIR=/opt/install/libiio/include -DLIBIIO_LIBRARY=/opt/install/libiio/lib/libiio.so`. In openSuse the lib directory path would be: `-DLIBIIO_LIBRARY=/opt/install/libiio/lib64/libiio.so`.
 
 <h2>RTL-SDR</h2>
 
@@ -138,15 +152,17 @@ If you use your own location for librtlsdr install directory you need to specify
 
 Linux only.
 
-SDRplay RSP1 devices are supported through the [libmirisdr-4](https://github.com/f4exb/libmirisdr-4) library found in this very same Github space. There is no package distribution for this library and you will have to clone it, build and install it in your system. However Debian packages of SDRangel contain a pre-compiled version of this library.
+[SDRplay RSP1](https://www.sdrplay.com/rsp1/) is supported through the [libmirisdr-4](https://github.com/f4exb/libmirisdr-4) library found in this very same Github space. There is no package distribution for this library and you will have to clone it, build and install it in your system. However Debian packages of SDRangel contain a pre-compiled version of this library.
 
 If you use your own location for libmirisdr-4 install directory you need to specify library and include locations with cmake. For example with `/opt/install/libmirisdr` the following defines must be added on `cmake` command line:
 
 `-DLIBMIRISDR_LIBRARIES=/opt/install/libmirisdr/lib/libmirisdr.so -DLIBMIRISDR_INCLUDE_DIR=/opt/install/libmirisdr/include`
 
+&#9888; The RSP1 has been discontinued in favor of RSP1A. Unfortunately due to their closed source nature RSP1A nor RSP2 can be supported in SDRangel.
+
 <h1>Plugins for special devices</h1>
 
-These plugins do not use any hardware device connected to your system. They support "virtual" devices related to the file system or the network.
+These plugins do not use any hardware device connected to your system.
 
 <h2>File input</h2>
 
@@ -161,6 +177,10 @@ The `.sdriq` format produced are the 2x2 bytes I/Q samples with a header contain
 The [File sink plugin](https://github.com/f4exb/sdrangel/tree/dev/plugins/samplesink/filesink) allows the recording of the I/Q baseband signal produced by a transmission chain to a file in the `.sdriq` format thus readable by the file source plugin described just above.
 
 Note that this plugin does not require any of the hardware support libraries nor the libusb library. It is always available in the list of devices as `FileSink[0]` even if no physical device is connected.
+
+<h2>Test source</h2>
+
+The [Test source plugin](https://github.com/f4exb/sdrangel/tree/master/plugins/samplesource/testsource) is an internal continuous wave generator that can be used to carry out test of software internals. 
 
 <h2>SDRdaemon receiver input</h2>
 
@@ -233,20 +253,13 @@ If you are not comfortable with this just do not install DSDcc and/or mbelib and
 
 In the [releases](https://github.com/f4exb/sdrangel/releases) section one can find binary distributions for some common systems:
 
+  - Debian x86_64 (Ubuntu 16.04, Ubuntu 17.04, Ubuntu 17.10, Debian Stretch)
   - Windows 32 bit (runs also in 64 bit Windows) 
-  - Debian x86_64 (Ubuntu 16.04, Ubuntu 17.04, Debian Stretch)
   - Windows 64 bit
-  - Debian armv7l (Debian Jessie) until v3.5.0
-  
-<h2>Windows distributions</h2>
-
-This is the archive of the complete binary distribution that expands to the `sdrangel64` directory for the 64 bit version and `sdrangel` for the 32 bit version. You can install it anywhere you like and click on `sdrangel.exe` to start.
 
 <h2>Debian distributions</h2>
 
-It is provided in the form of .deb packages for x86_64 architectures with SSE 4.1 support or ARMv7l architectures with Neon support. 
-
-Please note that the ARM version is quite experimental and may or may not work depending on the hardware (it is very slow and unusable on a RPi3 for example). From release v3.5.1 there is no more ARMv7 distributions.
+It is provided in the form of .deb packages for x86_64 architectures with SSE 4.1 support. 
 
 Install it as usual for .deb packages:
 
@@ -266,6 +279,12 @@ Since apt-get v 1.1 installation is possible from a local file:
     
 The software is installed in `/opt/sdrangel` you can start it from the command line with:
   - `/opt/sdrangel/bin/sdrangel`
+  
+<h2>Windows distributions</h2>
+
+This is the archive of the complete binary distribution that expands to the `sdrangel64` directory for the 64 bit version and `sdrangel` for the 32 bit version. You can install it anywhere you like and click on `sdrangel.exe` to start.
+
+<b>&#9888; Windows distributions are provided as by products thanks to the Qt toolchain. The platform of choice to run SDRangel is definitely Linux and very little support can be given for the Windows distributions.</b>
 
 <h1>Software build</h1>
 
@@ -273,9 +292,18 @@ The software is installed in `/opt/sdrangel` you can start it from the command l
 
 To be sure you will need at least Qt version 5.5. It definitely does not work with versions earlier than 5.3 but neither 5.3 nor 5.4 were tested.
 
-  - Linux builds are made with 5.5.1
-  - Windows 32 build is made with 5.9.1
-  - Windows 64 build is made with 5.9.1 
+  - Linux builds are made with 5.5.1 (Xenial), 5.7 (Zesty) and 5.9 (Artful)
+  - Windows 32 build is made with 5.9.1 and has Qt ANGLE support (OpenGL emulation with DirectX)
+  - Windows 64 build is made with 5.9.1 and has no Qt ANGLE support (native OpenGL)
+
+<h2>24 bit DSP</h2>
+
+By default all Rx DSP processes use 16 bit samples coded on int16 fields. In order to use 24 bit samples coded on int32 fields you can specify `-DRX_SAMPLE_24BIT` on the cmake command line. This will give more dynamic range when the number of bits with decimation exceeds 16 bits:
+
+  - RTL-SDR, HackRF: (8 bit native) no advantage
+  - Funcube Pro and Pro+: (16 bit native) no decimation hence no advantage
+  - Airspy, BladeRF, LimeSDR, PlutoSDR, SDRPlay: (12 bit native) advantage for decimation by 32 or 64
+  - AirspyHF: (16 bit native) advantage for any decimation
 
 <h2>Ubuntu</h2>
 
@@ -325,8 +353,10 @@ This has been tested with the bleeding edge "Thumbleweed" distribution:
 
 Then you should be all set to build the software with `cmake` and `make` as discussed earlier.
 
-  - Note1 for udev rules: installed udev rules for BladeRF and HackRF are targetted at Debian or Ubuntu systems that have a plugdev group for USB hotplug devices. This is not the case in openSUSE. To make the udev rules file compatible just remove the `GROUP` parameter on all lines and change `MODE` parameter to `666`.
-  - Note2: A package has been created (thanks Martin!), see: [sdrangel](http://software.opensuse.org/download.html?project=home%3Amnhauke%3Asdr&package=sdrangel). It is based on the 1.0.1 release.
+  - Note1: if you are on Leap you will need a more recent g++ compiler so in place of `gcc-c++` use `gcc5-c++` or `gcc6-c++` then add the following in the cmake command: `-DCMAKE_C_COMPILER=/usr/bin/gcc-6 -DCMAKE_CXX_COMPILER=/usr/bin/g++-6` (for gcc 6) and then `-DCMAKE_INSTALL_PREFIX:PATH=...` for the custom install path (not `-DCMAKE_INSTALL_PREFIX=...`)
+  - Note2: On Leap and aarch64 architectures you will need to build and install `libnanomsg` from [source](https://github.com/nanomsg/nanomsg)
+  - Note3 for udev rules: installed udev rules for BladeRF and HackRF are targetted at Debian or Ubuntu systems that have a plugdev group for USB hotplug devices. This is not the case in openSUSE. To make the udev rules file compatible just remove the `GROUP` parameter on all lines and change `MODE` parameter to `666`.
+  - Note4: A package has been created in OpenSUSE thanks to Martin, see: [sdrangel](https://build.opensuse.org/package/show/hardware:sdr/sdrangel). It is based on the latest release on master branch.
 
 <h2>Fedora</h2>
 
@@ -382,6 +412,7 @@ You can uninstall the software with `make uninstall` or `sudo make uninstall` fr
 <h1>Limitations</h1>
 
   - Your hardware. Still SDRangel is relatively conservative on computer resources.
+  - OpenGL 3+ (Linux) and 4.3+ (Windows) is required
 
 <h1>Features</h1>
 
@@ -395,16 +426,12 @@ Since version 3.3.2 the "todos" are in the form of tickets opened in the Issues 
 
 Other ideas:
 
-  - Possibility to connect channels for example Rx to Tx or single Rx channel to dual Rx channel supporting MI(MO) features like 360 degree polarization detection. Introduce the notion of ports of the same physical device.
-  - Specialize plugins into channel and sample source plugins since both have almost complete different requirements and only little in common
-  - 32 bit samples for the Channel Analyzer
   - Enhance presets management (Edit, Move, Import/Export from/to human readable format like JSON).
-  - Headless mode based on a saved configuration in above human readable form
   - Allow arbitrary sample rate for channelizers and demodulators (not multiple of 48 kHz). Prerequisite for polyphase channelizer
   - Implement polyphase channelizer
   - Level calibration
   - Even more demods. Contributors welcome!
 
-<h1>Developper's notes</h1>
+<h1>Developer's notes</h1>
 
-Please check the developper's specific [readme](./ReadmeDevelopper.md)
+Please check the developper's specific [readme](./ReadmeDeveloper.md)

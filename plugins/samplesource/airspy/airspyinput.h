@@ -17,11 +17,12 @@
 #ifndef INCLUDE_AIRSPYINPUT_H
 #define INCLUDE_AIRSPYINPUT_H
 
-#include <dsp/devicesamplesource.h>
-
-#include "airspysettings.h"
-#include <libairspy/airspy.h>
 #include <QString>
+#include <QByteArray>
+
+#include <libairspy/airspy.h>
+#include <dsp/devicesamplesource.h>
+#include "airspysettings.h"
 
 class DeviceSourceAPI;
 class AirspyThread;
@@ -71,21 +72,55 @@ public:
         { }
     };
 
+    class MsgStartStop : public Message {
+        MESSAGE_CLASS_DECLARATION
+
+    public:
+        bool getStartStop() const { return m_startStop; }
+
+        static MsgStartStop* create(bool startStop) {
+            return new MsgStartStop(startStop);
+        }
+
+    protected:
+        bool m_startStop;
+
+        MsgStartStop(bool startStop) :
+            Message(),
+            m_startStop(startStop)
+        { }
+    };
+
 	AirspyInput(DeviceSourceAPI *deviceAPI);
 	virtual ~AirspyInput();
 	virtual void destroy();
 
+	virtual void init();
 	virtual bool start();
 	virtual void stop();
 
+    virtual QByteArray serialize() const;
+    virtual bool deserialize(const QByteArray& data);
+
+	virtual void setMessageQueueToGUI(MessageQueue *queue) { m_guiMessageQueue = queue; }
 	virtual const QString& getDeviceDescription() const;
 	virtual int getSampleRate() const;
 	virtual quint64 getCenterFrequency() const;
+	virtual void setCenterFrequency(qint64 centerFrequency);
 	const std::vector<uint32_t>& getSampleRates() const { return m_sampleRates; }
 
 	virtual bool handleMessage(const Message& message);
 
-	static const qint64 loLowLimitFreq;
+    virtual int webapiRunGet(
+            SWGSDRangel::SWGDeviceState& response,
+            QString& errorMessage);
+
+    virtual int webapiRun(
+            bool run,
+            SWGSDRangel::SWGDeviceState& response,
+            QString& errorMessage);
+
+    static const qint64 loLowLimitFreq;
 	static const qint64 loHighLimitFreq;
 
 private:
@@ -93,7 +128,7 @@ private:
 	void closeDevice();
 	bool applySettings(const AirspySettings& settings, bool force);
 	struct airspy_device *open_airspy_from_sequence(int sequence);
-	void setCenterFrequency(quint64 freq);
+	void setDeviceCenterFrequency(quint64 freq);
 
 	DeviceSourceAPI *m_deviceAPI;
 	QMutex m_mutex;

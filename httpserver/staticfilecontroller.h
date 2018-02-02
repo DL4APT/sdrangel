@@ -13,7 +13,7 @@
 #include "httpresponse.h"
 #include "httprequesthandler.h"
 
-namespace stefanfrings {
+namespace qtwebapp {
 
 /**
   Delivers static files. It is usually called by the applications main request handler when
@@ -42,16 +42,24 @@ namespace stefanfrings {
   received a related HTTP request.
 */
 
+class HttpDocrootSettings;
+
 class DECLSPEC StaticFileController : public HttpRequestHandler  {
     Q_OBJECT
     Q_DISABLE_COPY(StaticFileController)
 public:
 
-    /** Constructor */
+    /** Constructor with Qt settings*/
     StaticFileController(QSettings* settings, QObject* parent = NULL);
 
-    /** Generates the response */
+    /** Constructor with settings structure */
+    StaticFileController(const HttpDocrootSettings& settings, QObject* parent = NULL);
+
+    /** Generates the response from HTTP request */
     void service(HttpRequest& request, HttpResponse& response);
+
+    /** Generates the response directly from the path */
+    void service(QByteArray& path, HttpResponse& response);
 
 private:
 
@@ -81,6 +89,9 @@ private:
 
     /** Used to synchronize cache access for threads */
     QMutex mutex;
+
+    /** Settings flag */
+    bool useQtSettings;
 
     /** Set a content-type header in the response depending on the ending of the filename */
     void setContentType(QString file, HttpResponse& response) const;

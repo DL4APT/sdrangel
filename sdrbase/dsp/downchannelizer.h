@@ -23,10 +23,14 @@
 #include <QMutex>
 #include "util/export.h"
 #include "util/message.h"
+#ifdef SDR_RX_SAMPLE_24BIT
+#include "dsp/inthalfbandfilterdb.h"
+#else
 #ifdef USE_SSE4_1
 #include "dsp/inthalfbandfiltereo1.h"
 #else
 #include "dsp/inthalfbandfilterdb.h"
+#endif
 #endif
 
 #define DOWNCHANNELIZER_HB_FILTER_ORDER 48
@@ -48,6 +52,11 @@ public:
 
 		int getSampleRate() const { return m_sampleRate; }
 		qint64 getFrequencyOffset() const { return m_frequencyOffset; }
+
+        static MsgChannelizerNotification* create(int samplerate, qint64 frequencyOffset)
+        {
+            return new MsgChannelizerNotification(samplerate, frequencyOffset);
+        }
 
 	private:
 		int m_sampleRate;
@@ -73,12 +82,17 @@ protected:
 			ModeUpperHalf
 		};
 
+#ifdef SDR_RX_SAMPLE_24BIT
+        typedef bool (IntHalfbandFilterDB<qint64, DOWNCHANNELIZER_HB_FILTER_ORDER>::*WorkFunction)(Sample* s);
+        IntHalfbandFilterDB<qint64, DOWNCHANNELIZER_HB_FILTER_ORDER>* m_filter;
+#else
 #ifdef USE_SSE4_1
 		typedef bool (IntHalfbandFilterEO1<DOWNCHANNELIZER_HB_FILTER_ORDER>::*WorkFunction)(Sample* s);
 		IntHalfbandFilterEO1<DOWNCHANNELIZER_HB_FILTER_ORDER>* m_filter;
 #else
-		typedef bool (IntHalfbandFilterDB<DOWNCHANNELIZER_HB_FILTER_ORDER>::*WorkFunction)(Sample* s);
-		IntHalfbandFilterDB<DOWNCHANNELIZER_HB_FILTER_ORDER>* m_filter;
+		typedef bool (IntHalfbandFilterDB<qint32, DOWNCHANNELIZER_HB_FILTER_ORDER>::*WorkFunction)(Sample* s);
+		IntHalfbandFilterDB<qint32, DOWNCHANNELIZER_HB_FILTER_ORDER>* m_filter;
+#endif
 #endif
 		WorkFunction m_workFunction;
 		Mode m_mode;

@@ -15,17 +15,21 @@
 ///////////////////////////////////////////////////////////////////////////////////
 
 #include <QtPlugin>
-#include <QAction>
+
 #include "plugin/pluginapi.h"
 #include "util/simpleserializer.h"
-
 #include "device/devicesinkapi.h"
+
+#ifdef SERVER_MODE
+#include "filesinkoutput.h"
+#else
 #include "filesinkgui.h"
+#endif
 #include "filesinkplugin.h"
 
 const PluginDescriptor FileSinkPlugin::m_pluginDescriptor = {
 	QString("File sink output"),
-	QString("3.7.4"),
+	QString("3.9.0"),
 	QString("(c) Edouard Griffiths, F4EXB"),
 	QString("https://github.com/f4exb/sdrangel"),
 	true,
@@ -53,27 +57,38 @@ void FileSinkPlugin::initPlugin(PluginAPI* pluginAPI)
 PluginInterface::SamplingDevices FileSinkPlugin::enumSampleSinks()
 {
 	SamplingDevices result;
-	int count = 1;
 
-	for(int i = 0; i < count; i++)
-	{
-		QString displayedName(QString("FileSink[%1]").arg(i));
-
-		result.append(SamplingDevice(displayedName,
-		        m_hardwareID,
-				m_deviceTypeID,
-				QString::null,
-				i));
-	}
+    result.append(SamplingDevice(
+            "FileSink",
+            m_hardwareID,
+            m_deviceTypeID,
+            QString::null,
+            0,
+            PluginInterface::SamplingDevice::BuiltInDevice,
+            false,
+            1,
+            0));
 
 	return result;
 }
 
-PluginInstanceGUI* FileSinkPlugin::createSampleSinkPluginInstanceGUI(const QString& sinkId, QWidget **widget, DeviceSinkAPI *deviceAPI)
+#ifdef SERVER_MODE
+PluginInstanceGUI* FileSinkPlugin::createSampleSinkPluginInstanceGUI(
+        const QString& sinkId __attribute((unused)),
+        QWidget **widget __attribute((unused)),
+        DeviceUISet *deviceUISet __attribute((unused)))
+{
+    return 0;
+}
+#else
+PluginInstanceGUI* FileSinkPlugin::createSampleSinkPluginInstanceGUI(
+        const QString& sinkId,
+        QWidget **widget,
+        DeviceUISet *deviceUISet)
 {
 	if(sinkId == m_deviceTypeID)
 	{
-		FileSinkGui* gui = new FileSinkGui(deviceAPI);
+		FileSinkGui* gui = new FileSinkGui(deviceUISet);
 		*widget = gui;
 		return gui;
 	}
@@ -82,6 +97,7 @@ PluginInstanceGUI* FileSinkPlugin::createSampleSinkPluginInstanceGUI(const QStri
 		return 0;
 	}
 }
+#endif
 
 DeviceSampleSink* FileSinkPlugin::createSampleSinkPluginInstanceOutput(const QString& sinkId, DeviceSinkAPI *deviceAPI)
 {

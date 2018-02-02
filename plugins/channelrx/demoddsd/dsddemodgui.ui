@@ -277,7 +277,7 @@
          </size>
         </property>
         <property name="toolTip">
-         <string>Zero crossing relaive position in number of samples (&lt;0 sampling point lags, &gt;0 it leads)</string>
+         <string>Zero crossing relative position in number of samples (&lt;0 sampling point lags, &gt;0 it leads)</string>
         </property>
         <property name="text">
          <string>-00</string>
@@ -584,7 +584,7 @@
        <widget class="QLabel" name="volumeText">
         <property name="minimumSize">
          <size>
-          <width>0</width>
+          <width>30</width>
           <height>0</height>
          </size>
         </property>
@@ -598,7 +598,7 @@
          <string>Sound volume</string>
         </property>
         <property name="text">
-         <string>2.0</string>
+         <string>10.0</string>
         </property>
         <property name="alignment">
          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -822,6 +822,20 @@
         </property>
         <property name="alignment">
          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="ButtonSwitch" name="highPassFilter">
+        <property name="toolTip">
+         <string>Toggle audio high pass filter</string>
+        </property>
+        <property name="text">
+         <string/>
+        </property>
+        <property name="icon">
+         <iconset resource="../../../sdrgui/resources/res.qrc">
+          <normaloff>:/filter_highpass.png</normaloff>:/filter_highpass.png</iconset>
         </property>
        </widget>
       </item>

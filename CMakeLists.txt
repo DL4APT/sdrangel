@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.1.0)
 cmake_policy(SET CMP0043 OLD)
 
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "4.9")
+    message(FATAL_ERROR "SDRangel requires GCC version 4.9 or higher!")
+endif()
+
 # QT Framework
 set(CMAKE_PREFIX_PATH "/Applications/Qt/5.7/clang_64/lib/cmake")
 
@@ -24,6 +28,7 @@ option(V4L-MSI "Use Linux Kernel MSI2500 Source." OFF)
 option(BUILD_TYPE "Build type (RELEASE, RELEASEWITHDBGINFO, DEBUG" RELEASE)
 option(DEBUG_OUTPUT "Print debug messages" OFF)
 option(HOST_RPI "Compiling on RPi" OFF)
+option(RX_SAMPLE_24BIT "Internal 24 bit Rx DSP" OFF)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/Modules)
 
@@ -182,19 +187,30 @@ elseif (${ARCHITECTURE} MATCHES "aarch64")
 endif()
 
 # Compiler flags.
+if (RX_SAMPLE_24BIT)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DSDR_RX_SAMPLE_24BIT")
+endif()
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -fmax-errors=10 -ffast-math -ftree-vectorize ${EXTRA_FLAGS}")
 
 ##############################################################################
 # base libraries
 add_subdirectory(sdrbase)
 add_subdirectory(sdrgui)
+add_subdirectory(sdrsrv)
+add_subdirectory(httpserver)
+add_subdirectory(logging)
+add_subdirectory(swagger)
 
 include_directories(
     ${CMAKE_CURRENT_BINARY_DIR}
     ${CMAKE_SOURCE_DIR}/sdrbase
     ${CMAKE_SOURCE_DIR}/sdrgui
+    ${CMAKE_SOURCE_DIR}/logging
     ${OPENGL_INCLUDE_DIR}
 )
+
+##############################################################################
+# main GUI application
 
 set(sdrangel_SOURCES
     app/main.cpp
@@ -211,6 +227,7 @@ add_executable(sdrangel
 target_link_libraries(sdrangel
     sdrbase
     sdrgui
+    logging
     ${QT_LIBRARIES}
     ${OPENGL_LIBRARIES}
 )
@@ -227,6 +244,30 @@ endif(WIN32)
 qt5_use_modules(sdrangel Widgets Multimedia)
 
 ##############################################################################
+# main server application
+
+set(sdrangelsrv_SOURCES
+    appsrv/main.cpp
+)
+
+add_executable(sdrangelsrv
+    ${sdrangelsrv_SOURCES}
+)
+
+target_include_directories(sdrangelsrv
+    PUBLIC ${CMAKE_SOURCE_DIR}/sdrsrv
+)
+
+target_link_libraries(sdrangelsrv
+    sdrbase
+    sdrsrv
+    logging
+    ${QT_LIBRARIES}
+)
+
+qt5_use_modules(sdrangelsrv Multimedia)
+
+##############################################################################
 
 if (BUILD_DEBIAN)
     add_subdirectory(cm256cc)
@@ -234,6 +275,7 @@ if (BUILD_DEBIAN)
     add_subdirectory(serialdv)
     add_subdirectory(dsdcc)
     add_subdirectory(libairspy)
+    add_subdirectory(libairspyhf)
     add_subdirectory(libhackrf)
     add_subdirectory(librtlsdr)
     add_subdirectory(libbladerf)
@@ -242,9 +284,9 @@ if (BUILD_DEBIAN)
     add_subdirectory(libiio)
 endif (BUILD_DEBIAN)
 
-add_subdirectory(httpserver)
 add_subdirectory(devices)
 add_subdirectory(plugins)
+add_subdirectory(pluginssrv)
 
 if(LIBUSB_FOUND AND UNIX)
     add_subdirectory(fcdhid)
@@ -255,7 +297,12 @@ endif(LIBUSB_FOUND AND UNIX)
 
 #install targets
 install(TARGETS sdrangel DESTINATION bin)
+install(TARGETS sdrangelsrv DESTINATION bin)
 #install(TARGETS sdrbase DESTINATION lib)
+
+#install files and directories
+install(DIRECTORY udev-rules DESTINATION share/sdrangel)
+install(FILES udev-rules/install.sh DESTINATION share/sdrangel/udev-rules PERMISSIONS WORLD_EXECUTE)
 
 ##############################################################################
 

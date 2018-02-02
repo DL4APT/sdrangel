@@ -20,6 +20,7 @@
 #include "sdrplaygui.h"
 
 #include <device/devicesourceapi.h>
+#include "device/deviceuiset.h"
 
 #include "ui_sdrplaygui.h"
 #include "gui/colormapper.h"
@@ -28,13 +29,14 @@
 #include "dsp/dspcommands.h"
 
 
-SDRPlayGui::SDRPlayGui(DeviceSourceAPI *deviceAPI, QWidget* parent) :
+SDRPlayGui::SDRPlayGui(DeviceUISet *deviceUISet, QWidget* parent) :
     QWidget(parent),
     ui(new Ui::SDRPlayGui),
-    m_deviceAPI(deviceAPI),
+    m_deviceUISet(deviceUISet),
+    m_doApplySettings(true),
     m_forceSettings(true)
 {
-    m_sampleSource = (SDRPlayInput*) m_deviceAPI->getSampleSource();
+    m_sampleSource = (SDRPlayInput*) m_deviceUISet->m_deviceSourceAPI->getSampleSource();
 
     ui->setupUi(this);
     ui->centerFrequency->setColorMapper(ColorMapper(ColorMapper::GrayGold));
@@ -135,7 +137,16 @@ bool SDRPlayGui::deserialize(const QByteArray& data)
 
 bool SDRPlayGui::handleMessage(const Message& message)
 {
-    if (SDRPlayInput::MsgReportSDRPlayGains::match(message))
+    if (SDRPlayInput::MsgConfigureSDRPlay::match(message))
+    {
+        const SDRPlayInput::MsgConfigureSDRPlay& cfg = (SDRPlayInput::MsgConfigureSDRPlay&) message;
+        m_settings = cfg.getSettings();
+        blockApplySettings(true);
+        displaySettings();
+        blockApplySettings(false);
+        return true;
+    }
+    else if (SDRPlayInput::MsgReportSDRPlayGains::match(message))
     {
     	qDebug() << "SDRPlayGui::handleMessage: MsgReportSDRPlayGains";
 
@@ -159,6 +170,15 @@ bool SDRPlayGui::handleMessage(const Message& message)
             gainText.sprintf("%03d", msg.getTunerGain());
             ui->gainTunerText->setText(gainText);
     	}
+
+        return true;
+    }
+    else if (SDRPlayInput::MsgStartStop::match(message))
+    {
+        SDRPlayInput::MsgStartStop& notif = (SDRPlayInput::MsgStartStop&) message;
+        blockApplySettings(true);
+        ui->startStop->setChecked(notif.getStartStop());
+        blockApplySettings(false);
 
         return true;
     }
@@ -198,8 +218,8 @@ void SDRPlayGui::handleInputMessages()
 
 void SDRPlayGui::updateSampleRateAndFrequency()
 {
-    m_deviceAPI->getSpectrum()->setSampleRate(m_sampleRate);
-    m_deviceAPI->getSpectrum()->setCenterFrequency(m_deviceCenterFrequency);
+    m_deviceUISet->getSpectrum()->setSampleRate(m_sampleRate);
+    m_deviceUISet->getSpectrum()->setCenterFrequency(m_deviceCenterFrequency);
     ui->deviceRateText->setText(tr("%1k").arg((float)m_sampleRate / 1000));
 }
 
@@ -275,7 +295,7 @@ void SDRPlayGui::updateHardware()
 
 void SDRPlayGui::updateStatus()
 {
-    int state = m_deviceAPI->state();
+    int state = m_deviceUISet->m_deviceSourceAPI->state();
 
     if(m_lastEngineState != state)
     {
@@ -292,7 +312,7 @@ void SDRPlayGui::updateStatus()
                 break;
             case DSPDeviceSourceEngine::StError:
                 ui->startStop->setStyleSheet("QToolButton { background-color : red; }");
-                QMessageBox::information(this, tr("Message"), m_deviceAPI->errorMessage());
+                QMessageBox::information(this, tr("Message"), m_deviceUISet->m_deviceSourceAPI->errorMessage());
                 break;
             default:
                 break;
@@ -432,18 +452,10 @@ void SDRPlayGui::on_gainBaseband_valueChanged(int value)
 
 void SDRPlayGui::on_startStop_toggled(bool checked)
 {
-    if (checked)
+    if (m_doApplySettings)
     {
-        if (m_deviceAPI->initAcquisition())
-        {
-            m_deviceAPI->startAcquisition();
-            DSPEngine::instance()->startAudioOutput();
-        }
-    }
-    else
-    {
-        m_deviceAPI->stopAcquisition();
-        DSPEngine::instance()->stopAudioOutput();
+        SDRPlayInput::MsgStartStop *message = SDRPlayInput::MsgStartStop::create(checked);
+        m_sampleSource->getInputMessageQueue()->push(message);
     }
 }
 

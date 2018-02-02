@@ -23,7 +23,7 @@
 #include "audio/audiofifo.h"
 
 AudioOutput::AudioOutput() :
-	m_mutex(),
+	m_mutex(QMutex::Recursive),
 	m_audioOutput(0),
 	m_audioUsageCount(0),
 	m_onExit(false),
@@ -47,10 +47,10 @@ AudioOutput::~AudioOutput()
 
 bool AudioOutput::start(int device, int rate)
 {
-	QMutexLocker mutexLocker(&m_mutex);
 
 	if (m_audioUsageCount == 0)
 	{
+        QMutexLocker mutexLocker(&m_mutex);
         QAudioDeviceInfo devInfo;
 
         if (device < 0)
@@ -116,11 +116,80 @@ bool AudioOutput::start(int device, int rate)
 	return true;
 }
 
+bool AudioOutput::startImmediate(int device, int rate)
+{
+    if (QIODevice::isOpen())
+    {
+        qInfo("AudioOutput::startImmediate: already open");
+        return true;
+    }
+
+    QMutexLocker mutexLocker(&m_mutex);
+    QAudioDeviceInfo devInfo;
+
+    if (device < 0)
+    {
+        devInfo = QAudioDeviceInfo::defaultOutputDevice();
+        qWarning("AudioOutput::startImmediate: using default device %s", qPrintable(devInfo.defaultOutputDevice().deviceName()));
+    }
+    else
+    {
+        QList<QAudioDeviceInfo> devicesInfo = QAudioDeviceInfo::availableDevices(QAudio::AudioOutput);
+
+        if (device < devicesInfo.size())
+        {
+            devInfo = devicesInfo[device];
+            qWarning("AudioOutput::startImmediate: using audio device #%d: %s", device, qPrintable(devInfo.defaultOutputDevice().deviceName()));
+        }
+        else
+        {
+            devInfo = QAudioDeviceInfo::defaultOutputDevice();
+            qWarning("AudioOutput::startImmediate: audio device #%d does not exist. Using default device %s", device, qPrintable(devInfo.defaultOutputDevice().deviceName()));
+        }
+    }
+
+    //QAudioDeviceInfo devInfo(QAudioDeviceInfo::defaultOutputDevice());
+
+    m_audioFormat.setSampleRate(rate);
+    m_audioFormat.setChannelCount(2);
+    m_audioFormat.setSampleSize(16);
+    m_audioFormat.setCodec("audio/pcm");
+    m_audioFormat.setByteOrder(QAudioFormat::LittleEndian);
+    m_audioFormat.setSampleType(QAudioFormat::SignedInt);
+
+    if (!devInfo.isFormatSupported(m_audioFormat))
+    {
+        m_audioFormat = devInfo.nearestFormat(m_audioFormat);
+        qWarning("AudioOutput::startImmediate: %d Hz S16_LE audio format not supported. New rate: %d", rate, m_audioFormat.sampleRate());
+    }
+    else
+    {
+        qInfo("AudioOutput::startImmediate: audio format OK");
+    }
+
+    if (m_audioFormat.sampleSize() != 16)
+    {
+        qWarning("AudioOutput::startImmediate: Audio device ( %s ) failed", qPrintable(devInfo.defaultOutputDevice().deviceName()));
+        return false;
+    }
+
+    m_audioOutput = new QAudioOutput(devInfo, m_audioFormat);
+
+    QIODevice::open(QIODevice::ReadOnly);
+
+    m_audioOutput->start(this);
+
+    if (m_audioOutput->state() != QAudio::ActiveState)
+    {
+        qWarning("AudioOutput::startImmediate: cannot start");
+    }
+
+    return true;
+}
+
 void AudioOutput::stop()
 {
     qDebug("AudioOutput::stop");
-
-	QMutexLocker mutexLocker(&m_mutex);
 
     if (m_audioUsageCount > 0)
     {
@@ -128,12 +197,28 @@ void AudioOutput::stop()
 
         if (m_audioUsageCount == 0)
         {
+            QMutexLocker mutexLocker(&m_mutex);
             QIODevice::close();
 
             if (!m_onExit) {
                 delete m_audioOutput;
             }
         }
+    }
+}
+
+void AudioOutput::stopImmediate()
+{
+    if (!QIODevice::isOpen())
+    {
+        qInfo("AudioOutput::stopImmediate");
+    }
+    else
+    {
+        qDebug("AudioOutput::stopImmediate");
+        QMutexLocker mutexLocker(&m_mutex);
+        QIODevice::close();
+        delete m_audioOutput;
     }
 }
 

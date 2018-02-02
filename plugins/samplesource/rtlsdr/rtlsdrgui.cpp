@@ -20,6 +20,7 @@
 #include "rtlsdrgui.h"
 
 #include <device/devicesourceapi.h>
+#include "device/deviceuiset.h"
 #include <dsp/filerecord.h>
 
 #include "ui_rtlsdrgui.h"
@@ -29,16 +30,17 @@
 #include "dsp/dspcommands.h"
 
 
-RTLSDRGui::RTLSDRGui(DeviceSourceAPI *deviceAPI, QWidget* parent) :
+RTLSDRGui::RTLSDRGui(DeviceUISet *deviceUISet, QWidget* parent) :
 	QWidget(parent),
 	ui(new Ui::RTLSDRGui),
-	m_deviceAPI(deviceAPI),
+	m_deviceUISet(deviceUISet),
+	m_doApplySettings(true),
 	m_forceSettings(true),
 	m_settings(),
 	m_sampleSource(0),
 	m_lastEngineState((DSPDeviceSourceEngine::State)-1)
 {
-    m_sampleSource = (RTLSDRInput*) m_deviceAPI->getSampleSource();
+    m_sampleSource = (RTLSDRInput*) m_deviceUISet->m_deviceSourceAPI->getSampleSource();
 
     ui->setupUi(this);
 	ui->centerFrequency->setColorMapper(ColorMapper(ColorMapper::GrayGold));
@@ -47,11 +49,17 @@ RTLSDRGui::RTLSDRGui(DeviceSourceAPI *deviceAPI, QWidget* parent) :
     ui->sampleRate->setColorMapper(ColorMapper(ColorMapper::GrayGreenYellow));
     ui->sampleRate->setValueRange(7, RTLSDRInput::sampleRateHighRangeMin, RTLSDRInput::sampleRateHighRangeMax);
 
+    ui->rfBW->setColorMapper(ColorMapper(ColorMapper::GrayYellow));
+    ui->rfBW->setValueRange(4, 350, 8000);
+
 	connect(&m_updateTimer, SIGNAL(timeout()), this, SLOT(updateHardware()));
 	connect(&m_statusTimer, SIGNAL(timeout()), this, SLOT(updateStatus()));
 	m_statusTimer.start(500);
 
 	displaySettings();
+
+	m_gains = m_sampleSource->getGains();
+	displayGains();
 
 	connect(&m_inputMessageQueue, SIGNAL(messageEnqueued()), this, SLOT(handleInputMessages()), Qt::QueuedConnection);
 }
@@ -131,12 +139,25 @@ bool RTLSDRGui::deserialize(const QByteArray& data)
 
 bool RTLSDRGui::handleMessage(const Message& message)
 {
-	if (RTLSDRInput::MsgReportRTLSDR::match(message))
+	if (RTLSDRInput::MsgConfigureRTLSDR::match(message))
 	{
-		m_gains = ((RTLSDRInput::MsgReportRTLSDR&) message).getGains();
-		displayGains();
-		return true;
+	    const RTLSDRInput::MsgConfigureRTLSDR& cfg = (RTLSDRInput::MsgConfigureRTLSDR&) message;
+	    m_settings = cfg.getSettings();
+	    blockApplySettings(true);
+	    displayGains();
+	    displaySettings();
+	    blockApplySettings(false);
+	    return true;
 	}
+	else if (RTLSDRInput::MsgStartStop::match(message))
+    {
+        RTLSDRInput::MsgStartStop& notif = (RTLSDRInput::MsgStartStop&) message;
+        blockApplySettings(true);
+        ui->startStop->setChecked(notif.getStartStop());
+        blockApplySettings(false);
+
+        return true;
+    }
 	else
 	{
 		return false;
@@ -173,8 +194,8 @@ void RTLSDRGui::handleInputMessages()
 
 void RTLSDRGui::updateSampleRateAndFrequency()
 {
-    m_deviceAPI->getSpectrum()->setSampleRate(m_sampleRate);
-    m_deviceAPI->getSpectrum()->setCenterFrequency(m_deviceCenterFrequency);
+    m_deviceUISet->getSpectrum()->setSampleRate(m_sampleRate);
+    m_deviceUISet->getSpectrum()->setCenterFrequency(m_deviceCenterFrequency);
     ui->deviceRateText->setText(tr("%1k").arg(QString::number(m_sampleRate / 1000.0f, 'g', 5)));
 }
 
@@ -229,6 +250,7 @@ void RTLSDRGui::displaySettings()
     updateFrequencyLimits();
 	ui->centerFrequency->setValue(m_settings.m_centerFrequency / 1000);
 	ui->sampleRate->setValue(m_settings.m_devSampleRate);
+	ui->rfBW->setValue(m_settings.m_rfBandwidth / 1000);
 	ui->dcOffset->setChecked(m_settings.m_dcBlock);
 	ui->iqImbalance->setChecked(m_settings.m_iqImbalance);
 	ui->ppm->setValue(m_settings.m_loPpmCorrection);
@@ -308,18 +330,10 @@ void RTLSDRGui::on_gain_valueChanged(int value)
 
 void RTLSDRGui::on_startStop_toggled(bool checked)
 {
-    if (checked)
+    if (m_doApplySettings)
     {
-        if (m_deviceAPI->initAcquisition())
-        {
-            m_deviceAPI->startAcquisition();
-            DSPEngine::instance()->startAudioOutput();
-        }
-    }
-    else
-    {
-        m_deviceAPI->stopAcquisition();
-        DSPEngine::instance()->stopAudioOutput();
+        RTLSDRInput::MsgStartStop *message = RTLSDRInput::MsgStartStop::create(checked);
+        m_sampleSource->getInputMessageQueue()->push(message);
     }
 }
 
@@ -347,15 +361,18 @@ void RTLSDRGui::on_transverter_clicked()
 
 void RTLSDRGui::updateHardware()
 {
-	RTLSDRInput::MsgConfigureRTLSDR* message = RTLSDRInput::MsgConfigureRTLSDR::create(m_settings, m_forceSettings);
-	m_sampleSource->getInputMessageQueue()->push(message);
-	m_forceSettings = false;
-	m_updateTimer.stop();
+    if (m_doApplySettings)
+    {
+        RTLSDRInput::MsgConfigureRTLSDR* message = RTLSDRInput::MsgConfigureRTLSDR::create(m_settings, m_forceSettings);
+        m_sampleSource->getInputMessageQueue()->push(message);
+        m_forceSettings = false;
+        m_updateTimer.stop();
+    }
 }
 
 void RTLSDRGui::updateStatus()
 {
-    int state = m_deviceAPI->state();
+    int state = m_deviceUISet->m_deviceSourceAPI->state();
 
     if(m_lastEngineState != state)
     {
@@ -372,7 +389,7 @@ void RTLSDRGui::updateStatus()
                 break;
             case DSPDeviceSourceEngine::StError:
                 ui->startStop->setStyleSheet("QToolButton { background-color : red; }");
-                QMessageBox::information(this, tr("Message"), m_deviceAPI->errorMessage());
+                QMessageBox::information(this, tr("Message"), m_deviceUISet->m_deviceSourceAPI->errorMessage());
                 break;
             default:
                 break;
@@ -380,6 +397,11 @@ void RTLSDRGui::updateStatus()
 
         m_lastEngineState = state;
     }
+}
+
+void RTLSDRGui::blockApplySettings(bool block)
+{
+    m_doApplySettings = !block;
 }
 
 void RTLSDRGui::on_checkBox_stateChanged(int state)
@@ -414,6 +436,12 @@ void RTLSDRGui::on_agc_stateChanged(int state)
 void RTLSDRGui::on_sampleRate_changed(quint64 value)
 {
     m_settings.m_devSampleRate = value;
+    sendSettings();
+}
+
+void RTLSDRGui::on_rfBW_changed(quint64 value)
+{
+    m_settings.m_rfBandwidth = value * 1000;
     sendSettings();
 }
 

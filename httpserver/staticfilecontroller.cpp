@@ -4,14 +4,16 @@
 */
 
 #include "staticfilecontroller.h"
+#include "httpdocrootsettings.h"
+
 #include <QFileInfo>
 #include <QDir>
 #include <QDateTime>
 
-using namespace stefanfrings;
+using namespace qtwebapp;
 
 StaticFileController::StaticFileController(QSettings* settings, QObject* parent)
-    :HttpRequestHandler(parent)
+    :HttpRequestHandler(parent), useQtSettings(true)
 {
     maxAge=settings->value("maxAge","60000").toInt();
     encoding=settings->value("encoding","UTF-8").toString();
@@ -36,10 +38,36 @@ StaticFileController::StaticFileController(QSettings* settings, QObject* parent)
     qDebug("StaticFileController: cache timeout=%i, size=%i",cacheTimeout,cache.maxCost());
 }
 
+StaticFileController::StaticFileController(const HttpDocrootSettings& settings, QObject* parent)
+    :HttpRequestHandler(parent), useQtSettings(false)
+{
+    maxAge=settings.maxAge;
+    encoding=settings.encoding;
+    docroot=settings.path;
+    if(!(docroot.startsWith(":/") || docroot.startsWith("qrc://")))
+    {
+        // Convert relative path to absolute, based on the directory of the config file.
+        if (QDir::isRelativePath(docroot))
+        {
+            docroot = QFileInfo(QDir::currentPath(), docroot).absoluteFilePath();
+        }
+    }
+    qDebug("StaticFileController: docroot=%s, encoding=%s, maxAge=%i",qPrintable(docroot),qPrintable(encoding),maxAge);
+    maxCachedFileSize=settings.maxCachedFileSize;
+    cache.setMaxCost(settings.cacheSize);
+    cacheTimeout=settings.cacheTime;
+    qDebug("StaticFileController: cache timeout=%i, size=%i",cacheTimeout,cache.maxCost());
+}
 
 void StaticFileController::service(HttpRequest& request, HttpResponse& response)
 {
-    QByteArray path=request.getPath();
+    QByteArray path = request.getPath();
+    service(path, response);
+}
+
+void StaticFileController::service(QByteArray& path, HttpResponse& response)
+{
+    //QByteArray path=request.getPath();
     // Check if we have the file in cache
     qint64 now=QDateTime::currentMSecsSinceEpoch();
     mutex.lock();
@@ -92,7 +120,8 @@ void StaticFileController::service(HttpRequest& request, HttpResponse& response)
                 entry->created=now;
                 entry->filename=path;
                 mutex.lock();
-                cache.insert(request.getPath(),entry,entry->document.size());
+                //cache.insert(request.getPath(),entry,entry->document.size());
+                cache.insert(path,entry,entry->document.size());
                 mutex.unlock();
             }
             else
@@ -114,6 +143,7 @@ void StaticFileController::service(HttpRequest& request, HttpResponse& response)
             }
             else
             {
+                qWarning("StaticFileController: File %s not found",qPrintable(file.fileName()));
                 response.setStatus(404,"not found");
                 response.write("404 not found",true);
             }

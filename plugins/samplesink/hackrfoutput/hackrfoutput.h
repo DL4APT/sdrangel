@@ -54,6 +54,25 @@ public:
 		{ }
 	};
 
+    class MsgStartStop : public Message {
+        MESSAGE_CLASS_DECLARATION
+
+    public:
+        bool getStartStop() const { return m_startStop; }
+
+        static MsgStartStop* create(bool startStop) {
+            return new MsgStartStop(startStop);
+        }
+
+    protected:
+        bool m_startStop;
+
+        MsgStartStop(bool startStop) :
+            Message(),
+            m_startStop(startStop)
+        { }
+    };
+
 	class MsgReportHackRF : public Message {
 		MESSAGE_CLASS_DECLARATION
 
@@ -75,21 +94,47 @@ public:
 	virtual ~HackRFOutput();
 	virtual void destroy();
 
+    virtual void init();
 	virtual bool start();
 	virtual void stop();
 
+    virtual QByteArray serialize() const;
+    virtual bool deserialize(const QByteArray& data);
+
+    virtual void setMessageQueueToGUI(MessageQueue *queue) { m_guiMessageQueue = queue; }
 	virtual const QString& getDeviceDescription() const;
 	virtual int getSampleRate() const;
 	virtual quint64 getCenterFrequency() const;
+    virtual void setCenterFrequency(qint64 centerFrequency);
 
 	virtual bool handleMessage(const Message& message);
+
+    virtual int webapiSettingsGet(
+                SWGSDRangel::SWGDeviceSettings& response,
+                QString& errorMessage);
+
+    virtual int webapiSettingsPutPatch(
+                bool force,
+                const QStringList& deviceSettingsKeys,
+                SWGSDRangel::SWGDeviceSettings& response, // query + response
+                QString& errorMessage);
+
+    virtual int webapiRunGet(
+            SWGSDRangel::SWGDeviceState& response,
+            QString& errorMessage);
+
+    virtual int webapiRun(
+            bool run,
+            SWGSDRangel::SWGDeviceState& response,
+            QString& errorMessage);
 
 private:
     bool openDevice();
     void closeDevice();
 	bool applySettings(const HackRFOutputSettings& settings, bool force);
 //	hackrf_device *open_hackrf_from_sequence(int sequence);
-	void setCenterFrequency(quint64 freq_hz, qint32 LOppmTenths);
+	void setDeviceCenterFrequency(quint64 freq_hz, qint32 LOppmTenths);
+    void webapiFormatDeviceSettings(SWGSDRangel::SWGDeviceSettings& response, const HackRFOutputSettings& settings);
 
 	DeviceSinkAPI *m_deviceAPI;
 	QMutex m_mutex;

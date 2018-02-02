@@ -17,8 +17,8 @@ QMAKE_CXXFLAGS += -std=c++11
 CONFIG(MINGW32):LIBLIMESUITESRC = "D:\softs\LimeSuite"
 CONFIG(MINGW64):LIBLIMESUITESRC = "D:\softs\LimeSuite"
 
-CONFIG(MINGW32):INCLUDEPATH += "D:\softs\libusb-1.0.20\include"
-CONFIG(MINGW64):INCLUDEPATH += "D:\softs\libusb-1.0.20\include"
+CONFIG(MINGW32):INCLUDEPATH += "D:\softs\libusb-1.0.20\include\libusb-1.0"
+CONFIG(MINGW64):INCLUDEPATH += "D:\softs\libusb-1.0.20\include\libusb-1.0"
 
 CONFIG(MINGW32):INCLUDEPATH += "..\libsqlite3\src"
 CONFIG(MINGW64):INCLUDEPATH += "..\libsqlite3\src"
@@ -37,6 +37,7 @@ INCLUDEPATH += $$LIBLIMESUITESRC/external/cpp-feather-ini-parser
 SOURCES = $$LIBLIMESUITESRC/src/ADF4002/ADF4002.cpp\
     $$LIBLIMESUITESRC/src/API/lms7_api.cpp\
     $$LIBLIMESUITESRC/src/API/lms7_device.cpp\
+    $$LIBLIMESUITESRC/src/API/LimeSDR_mini.cpp\
     $$LIBLIMESUITESRC/src/API/qLimeSDR.cpp\
     src/BuiltinConnections.cpp\
     $$LIBLIMESUITESRC/src/ConnectionRegistry/ConnectionHandle.cpp\
@@ -80,13 +81,13 @@ SOURCES = $$LIBLIMESUITESRC/src/ADF4002/ADF4002.cpp\
     
 HEADERS = $$LIBLIMESUITESRC/src/ADF4002/ADF4002.h\
     $$LIBLIMESUITESRC/src/API/lms7_device.h\
+    $$LIBLIMESUITESRC/src/API/LimeSDR_mini.h\
     $$LIBLIMESUITESRC/src/API/qLimeSDR.h\
     $$LIBLIMESUITESRC/src/ConnectionRegistry/ConnectionHandle.h\
     $$LIBLIMESUITESRC/src/ConnectionRegistry/ConnectionRegistry.h\
     $$LIBLIMESUITESRC/src/ConnectionRegistry/IConnection.h\
     $$LIBLIMESUITESRC/src/ConnectionSTREAM/ConnectionSTREAM.h\
     $$LIBLIMESUITESRC/src/Connection_uLimeSDR/Connection_uLimeSDR.h\
-    $$LIBLIMESUITESRC/src/Connection_uLimeSDR/DRV_DriverInterface.h\
     $$LIBLIMESUITESRC/src/Connection_uLimeSDR/FTD3XXLibrary/FTD3XX.h\
     $$LIBLIMESUITESRC/src/ConnectionXillybus/ConnectionXillybus.h\
     $$LIBLIMESUITESRC/src/FPGA_common/FPGA_common.h\

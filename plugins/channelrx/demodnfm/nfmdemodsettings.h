@@ -27,7 +27,6 @@ struct NFMDemodSettings
     static const int m_rfBW[];
     static const int m_fmDev[];
 
-    int m_inputSampleRate;
     int64_t m_inputFrequencyOffset;
     Real m_rfBandwidth;
     Real m_afBandwidth;
@@ -44,6 +43,7 @@ struct NFMDemodSettings
     QString m_udpAddress;
     uint16_t m_udpPort;
     quint32 m_rgbColor;
+    QString m_title;
 
     Serializable *m_channelMarker;
 

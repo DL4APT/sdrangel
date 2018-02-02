@@ -20,6 +20,9 @@
 #include <string.h>
 #include <errno.h>
 
+#include "SWGDeviceSettings.h"
+#include "SWGDeviceState.h"
+
 #include "dsp/dspcommands.h"
 #include "dsp/dspengine.h"
 #include <dsp/filerecord.h>
@@ -33,6 +36,7 @@
 #include "fcdproplusconst.h"
 
 MESSAGE_CLASS_DEFINITION(FCDProPlusInput::MsgConfigureFCD, Message)
+MESSAGE_CLASS_DEFINITION(FCDProPlusInput::MsgStartStop, Message)
 MESSAGE_CLASS_DEFINITION(FCDProPlusInput::MsgFileRecord, Message)
 
 FCDProPlusInput::FCDProPlusInput(DeviceSourceAPI *deviceAPI) :
@@ -78,6 +82,11 @@ bool FCDProPlusInput::openDevice()
     }
 
     return true;
+}
+
+void FCDProPlusInput::init()
+{
+    applySettings(m_settings, true);
 }
 
 bool FCDProPlusInput::start()
@@ -148,6 +157,33 @@ void FCDProPlusInput::stop()
 	m_running = false;
 }
 
+QByteArray FCDProPlusInput::serialize() const
+{
+    return m_settings.serialize();
+}
+
+bool FCDProPlusInput::deserialize(const QByteArray& data)
+{
+    bool success = true;
+
+    if (!m_settings.deserialize(data))
+    {
+        m_settings.resetToDefaults();
+        success = false;
+    }
+
+    MsgConfigureFCD* message = MsgConfigureFCD::create(m_settings, true);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue)
+    {
+        MsgConfigureFCD* messageToGUI = MsgConfigureFCD::create(m_settings, true);
+        m_guiMessageQueue->push(messageToGUI);
+    }
+
+    return success;
+}
+
 const QString& FCDProPlusInput::getDeviceDescription() const
 {
 	return m_deviceDescription;
@@ -163,6 +199,21 @@ quint64 FCDProPlusInput::getCenterFrequency() const
 	return m_settings.m_centerFrequency;
 }
 
+void FCDProPlusInput::setCenterFrequency(qint64 centerFrequency)
+{
+    FCDProPlusSettings settings = m_settings;
+    settings.m_centerFrequency = centerFrequency;
+
+    MsgConfigureFCD* message = MsgConfigureFCD::create(settings, false);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue)
+    {
+        MsgConfigureFCD* messageToGUI = MsgConfigureFCD::create(settings, false);
+        m_guiMessageQueue->push(messageToGUI);
+    }
+}
+
 bool FCDProPlusInput::handleMessage(const Message& message)
 {
 	if(MsgConfigureFCD::match(message))
@@ -172,6 +223,27 @@ bool FCDProPlusInput::handleMessage(const Message& message)
 		applySettings(conf.getSettings(), conf.getForce());
 		return true;
 	}
+    else if (MsgStartStop::match(message))
+    {
+        MsgStartStop& cmd = (MsgStartStop&) message;
+        qDebug() << "BladerfInput::handleMessage: MsgStartStop: " << (cmd.getStartStop() ? "start" : "stop");
+
+        if (cmd.getStartStop())
+        {
+            if (m_deviceAPI->initAcquisition())
+            {
+                m_deviceAPI->startAcquisition();
+                DSPEngine::instance()->startAudioOutput();
+            }
+        }
+        else
+        {
+            m_deviceAPI->stopAcquisition();
+            DSPEngine::instance()->stopAudioOutput();
+        }
+
+        return true;
+    }
     else if (MsgFileRecord::match(message))
     {
         MsgFileRecord& conf = (MsgFileRecord&) message;
@@ -193,7 +265,7 @@ bool FCDProPlusInput::handleMessage(const Message& message)
 
 void FCDProPlusInput::applySettings(const FCDProPlusSettings& settings, bool force)
 {
-	bool signalChange = false;
+	bool forwardChange = false;
 
 	if (force || (m_settings.m_centerFrequency != settings.m_centerFrequency)
             || (m_settings.m_transverterMode != settings.m_transverterMode)
@@ -211,8 +283,9 @@ void FCDProPlusInput::applySettings(const FCDProPlusSettings& settings, bool for
         qDebug() << "FCDProPlusInput::applySettings: center freq: " << settings.m_centerFrequency << " Hz"
                 << " device center freq: " << deviceCenterFrequency << " Hz";
 
+        forwardChange = (m_settings.m_centerFrequency != settings.m_centerFrequency) || force;
+
         m_settings.m_centerFrequency = settings.m_centerFrequency;
-        signalChange = true;
 	}
 
 	if ((m_settings.m_lnaGain != settings.m_lnaGain) || force)
@@ -297,7 +370,7 @@ void FCDProPlusInput::applySettings(const FCDProPlusSettings& settings, bool for
 		m_deviceAPI->configureCorrections(m_settings.m_dcBlock, m_settings.m_iqImbalance);
 	}
 
-	if (signalChange)
+	if (forwardChange)
     {
 		DSPSignalNotification *notif = new DSPSignalNotification(fcd_traits<ProPlus>::sampleRate, m_settings.m_centerFrequency);
         m_fileSink->handleMessage(*notif); // forward to file sink
@@ -387,6 +460,31 @@ void FCDProPlusInput::set_lo_ppm()
 	set_center_freq((double) m_settings.m_centerFrequency);
 }
 
+int FCDProPlusInput::webapiRunGet(
+        SWGSDRangel::SWGDeviceState& response,
+        QString& errorMessage __attribute__((unused)))
+{
+    m_deviceAPI->getDeviceEngineStateStr(*response.getState());
+    return 200;
+}
+
+int FCDProPlusInput::webapiRun(
+        bool run,
+        SWGSDRangel::SWGDeviceState& response,
+        QString& errorMessage __attribute__((unused)))
+{
+    m_deviceAPI->getDeviceEngineStateStr(*response.getState());
+    MsgStartStop *message = MsgStartStop::create(run);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue) // forward to GUI if any
+    {
+        MsgStartStop *msgToGUI = MsgStartStop::create(run);
+        m_guiMessageQueue->push(msgToGUI);
+    }
+
+    return 200;
+}
 
 
 

@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>370</width>
+    <width>390</width>
     <height>643</height>
    </rect>
   </property>
@@ -18,7 +18,7 @@
   </property>
   <property name="minimumSize">
    <size>
-    <width>370</width>
+    <width>390</width>
     <height>0</height>
    </size>
   </property>
@@ -36,13 +36,13 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>360</width>
+     <width>385</width>
      <height>331</height>
     </rect>
    </property>
    <property name="minimumSize">
     <size>
-     <width>360</width>
+     <width>385</width>
      <height>0</height>
     </size>
    </property>
@@ -95,7 +95,7 @@
           </property>
           <property name="minimumSize">
            <size>
-            <width>32</width>
+            <width>125</width>
             <height>16</height>
            </size>
           </property>
@@ -206,6 +206,27 @@
          </widget>
         </item>
         <item>
+         <widget class="Line" name="line_2">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="flipSidebands">
+          <property name="toolTip">
+           <string>Flip sidebands in SSB mode (LSB-&gt;USB or USB-&gt;LSB)</string>
+          </property>
+          <property name="text">
+           <string/>
+          </property>
+          <property name="icon">
+           <iconset resource="../../../sdrgui/resources/res.qrc">
+            <normaloff>:/flip_sidebands.png</normaloff>:/flip_sidebands.png</iconset>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QToolButton" name="dsb">
           <property name="toolTip">
            <string>DSB/SSB toggle</string>
@@ -283,13 +304,31 @@
      <layout class="QHBoxLayout" name="bqndwidthLayout">
       <item>
        <widget class="QLabel" name="BWLabel">
+        <property name="minimumSize">
+         <size>
+          <width>50</width>
+          <height>0</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>50</width>
+          <height>16777215</height>
+         </size>
+        </property>
         <property name="text">
-         <string>BW</string>
+         <string>Hi cut</string>
         </property>
        </widget>
       </item>
       <item>
-       <widget class="QSlider" name="BW">
+       <widget class="TickedSlider" name="BW">
+        <property name="maximumSize">
+         <size>
+          <width>16777215</width>
+          <height>16</height>
+         </size>
+        </property>
         <property name="toolTip">
          <string>Lowpass filter cutoff frequency</string>
         </property>
@@ -308,6 +347,12 @@
         <property name="orientation">
          <enum>Qt::Horizontal</enum>
         </property>
+        <property name="tickPosition">
+         <enum>QSlider::TicksBelow</enum>
+        </property>
+        <property name="tickInterval">
+         <number>5</number>
+        </property>
        </widget>
       </item>
       <item>
@@ -316,6 +361,12 @@
          <size>
           <width>50</width>
           <height>0</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>50</width>
+          <height>16777215</height>
          </size>
         </property>
         <property name="text">
@@ -329,16 +380,177 @@
      </layout>
     </item>
     <item>
+     <layout class="QHBoxLayout" name="scaleLayout">
+      <property name="spacing">
+       <number>0</number>
+      </property>
+      <item>
+       <widget class="QLabel" name="scalePadLeft">
+        <property name="minimumSize">
+         <size>
+          <width>50</width>
+          <height>0</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>50</width>
+          <height>10</height>
+         </size>
+        </property>
+        <property name="font">
+         <font>
+          <pointsize>8</pointsize>
+         </font>
+        </property>
+        <property name="text">
+         <string>f  </string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="scaleMinus">
+        <property name="maximumSize">
+         <size>
+          <width>10</width>
+          <height>10</height>
+         </size>
+        </property>
+        <property name="font">
+         <font>
+          <pointsize>8</pointsize>
+         </font>
+        </property>
+        <property name="text">
+         <string>-</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="lsbLabel">
+        <property name="font">
+         <font>
+          <pointsize>8</pointsize>
+         </font>
+        </property>
+        <property name="text">
+         <string>LSB</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignCenter</set>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="scaleCenter">
+        <property name="maximumSize">
+         <size>
+          <width>12</width>
+          <height>10</height>
+         </size>
+        </property>
+        <property name="font">
+         <font>
+          <pointsize>8</pointsize>
+         </font>
+        </property>
+        <property name="text">
+         <string>0</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignCenter</set>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="usbLabel">
+        <property name="font">
+         <font>
+          <pointsize>8</pointsize>
+         </font>
+        </property>
+        <property name="text">
+         <string>USB</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignCenter</set>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="scalePlus">
+        <property name="maximumSize">
+         <size>
+          <width>10</width>
+          <height>10</height>
+         </size>
+        </property>
+        <property name="font">
+         <font>
+          <pointsize>8</pointsize>
+         </font>
+        </property>
+        <property name="text">
+         <string>+</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="scalePadRight">
+        <property name="minimumSize">
+         <size>
+          <width>50</width>
+          <height>0</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>50</width>
+          <height>10</height>
+         </size>
+        </property>
+        <property name="text">
+         <string/>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <item>
      <layout class="QHBoxLayout" name="lowCutLayout">
       <item>
        <widget class="QLabel" name="lowCutLabel">
+        <property name="minimumSize">
+         <size>
+          <width>50</width>
+          <height>0</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>50</width>
+          <height>16777215</height>
+         </size>
+        </property>
         <property name="text">
          <string>Low cut</string>
         </property>
        </widget>
       </item>
       <item>
-       <widget class="QSlider" name="lowCut">
+       <widget class="TickedSlider" name="lowCut">
+        <property name="maximumSize">
+         <size>
+          <width>16777215</width>
+          <height>16</height>
+         </size>
+        </property>
         <property name="toolTip">
          <string>Highpass filter cutoff frequency (SSB)</string>
         </property>
@@ -357,6 +569,12 @@
         <property name="orientation">
          <enum>Qt::Horizontal</enum>
         </property>
+        <property name="tickPosition">
+         <enum>QSlider::TicksAbove</enum>
+        </property>
+        <property name="tickInterval">
+         <number>5</number>
+        </property>
        </widget>
       </item>
       <item>
@@ -365,6 +583,12 @@
          <size>
           <width>50</width>
           <height>0</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>50</width>
+          <height>16777215</height>
          </size>
         </property>
         <property name="text">
@@ -1075,6 +1299,11 @@
    <extends>QWidget</extends>
    <header>gui/valuedialz.h</header>
    <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>TickedSlider</class>
+   <extends>QSlider</extends>
+   <header>gui/tickedslider.h</header>
   </customwidget>
  </customwidgets>
  <resources>

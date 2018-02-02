@@ -15,16 +15,17 @@
 // along with this program. If not, see <http://www.gnu.org/licenses/>.          //
 ///////////////////////////////////////////////////////////////////////////////////
 
-#include "../../channelrx/demoddsd/dsddemodplugin.h"
+#include "dsddemodplugin.h"
 
 #include <device/devicesourceapi.h>
 #include <QtPlugin>
 #include "plugin/pluginapi.h"
-#include "../../channelrx/demoddsd/dsddemodgui.h"
+#include "dsddemodgui.h"
+#include "dsddemod.h"
 
 const PluginDescriptor DSDDemodPlugin::m_pluginDescriptor = {
 	QString("DSD Demodulator"),
-	QString("3.7.3"),
+	QString("3.11.1"),
 	QString("(c) Edouard Griffiths, F4EXB"),
 	QString("https://github.com/f4exb/sdrangel"),
 	true,
@@ -47,21 +48,21 @@ void DSDDemodPlugin::initPlugin(PluginAPI* pluginAPI)
 	m_pluginAPI = pluginAPI;
 
 	// register DSD demodulator
-	m_pluginAPI->registerRxChannel(DSDDemodGUI::m_channelID, this);
+	m_pluginAPI->registerRxChannel(DSDDemod::m_channelIdURI, DSDDemod::m_channelId, this);
 }
 
-PluginInstanceGUI* DSDDemodPlugin::createRxChannel(const QString& channelName, DeviceSourceAPI *deviceAPI)
+PluginInstanceGUI* DSDDemodPlugin::createRxChannelGUI(DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel)
 {
-	if(channelName == DSDDemodGUI::m_channelID)
-	{
-		DSDDemodGUI* gui = DSDDemodGUI::create(m_pluginAPI, deviceAPI);
-		return gui;
-	} else {
-		return NULL;
-	}
+	return DSDDemodGUI::create(m_pluginAPI, deviceUISet, rxChannel);
 }
 
-void DSDDemodPlugin::createInstanceDSDDemod(DeviceSourceAPI *deviceAPI)
+BasebandSampleSink* DSDDemodPlugin::createRxChannelBS(DeviceSourceAPI *deviceAPI)
 {
-    DSDDemodGUI::create(m_pluginAPI, deviceAPI);
+    return new DSDDemod(deviceAPI);
 }
+
+ChannelSinkAPI* DSDDemodPlugin::createRxChannelCS(DeviceSourceAPI *deviceAPI)
+{
+    return new DSDDemod(deviceAPI);
+}
+

@@ -5,7 +5,6 @@
         <file>microphone.png</file>
         <file>checkmark.png</file>
         <file>questionmark.png</file>
-        <file>res.qrc</file>
         <file>export.png</file>
         <file>import.png</file>
         <file>compressed.png</file>
@@ -79,5 +78,18 @@
         <file>stream.png</file>
         <file>antenna.png</file>
         <file>link.png</file>
+        <file>choose.png</file>
+        <file>clocksource.png</file>
+        <file>flip_sidebands.png</file>
+        <file>filter_highpass.png</file>
+        <file>edit.png</file>
+        <file>listing.png</file>
+        <file>create.png</file>
+        <file>duplicate.png</file>
+        <file>bin.png</file>
+        <file>save.png</file>
+        <file>load.png</file>
+        <file>keyboard.png</file>
+        <file>kill.png</file>
     </qresource>
 </RCC>

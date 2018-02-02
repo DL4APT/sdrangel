@@ -2,6 +2,7 @@ project(atv)
 
 set(atv_SOURCES
 	atvdemod.cpp
+	atvdemodsettings.cpp
 	atvdemodgui.cpp
 	atvdemodplugin.cpp
 	atvscreen.cpp
@@ -10,9 +11,11 @@ set(atv_SOURCES
 
 set(atv_HEADERS
 	atvdemod.h
+    atvdemodsettings.h
 	atvdemodgui.h
 	atvdemodplugin.h
 	atvscreen.h
+	atvscreeninterface.h
 	glshaderarray.h
 )
 

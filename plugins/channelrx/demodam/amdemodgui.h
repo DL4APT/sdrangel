@@ -9,11 +9,10 @@
 #include "amdemodsettings.h"
 
 class PluginAPI;
-class DeviceSourceAPI;
+class DeviceUISet;
 
-class ThreadedBasebandSampleSink;
-class DownChannelizer;
 class AMDemod;
+class BasebandSampleSink;
 
 namespace Ui {
 	class AMDemodGUI;
@@ -23,7 +22,7 @@ class AMDemodGUI : public RollupWidget, public PluginInstanceGUI {
 	Q_OBJECT
 
 public:
-	static AMDemodGUI* create(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI);
+	static AMDemodGUI* create(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel);
 	virtual void destroy();
 
 	void setName(const QString& name);
@@ -37,10 +36,35 @@ public:
 	virtual MessageQueue *getInputMessageQueue() { return &m_inputMessageQueue; }
 	virtual bool handleMessage(const Message& message);
 
-	static const QString m_channelID;
+public slots:
+	void channelMarkerChangedByCursor();
+	void channelMarkerHighlightedByCursor();
+
+private:
+	Ui::AMDemodGUI* ui;
+	PluginAPI* m_pluginAPI;
+	DeviceUISet* m_deviceUISet;
+	ChannelMarker m_channelMarker;
+	AMDemodSettings m_settings;
+	bool m_doApplySettings;
+
+	AMDemod* m_amDemod;
+	bool m_squelchOpen;
+	uint32_t m_tickCount;
+	MessageQueue m_inputMessageQueue;
+
+	explicit AMDemodGUI(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel, QWidget* parent = 0);
+	virtual ~AMDemodGUI();
+
+    void blockApplySettings(bool block);
+	void applySettings(bool force = false);
+	void displaySettings();
+	void displayUDPAddress();
+
+	void leaveEvent(QEvent*);
+	void enterEvent(QEvent*);
 
 private slots:
-	void channelMarkerChanged();
 	void on_deltaFrequency_changed(qint64 value);
 	void on_bandpassEnable_toggled(bool checked);
 	void on_rfBW_valueChanged(int value);
@@ -51,32 +75,6 @@ private slots:
 	void onWidgetRolled(QWidget* widget, bool rollDown);
     void onMenuDialogCalled(const QPoint& p);
 	void tick();
-
-private:
-	Ui::AMDemodGUI* ui;
-	PluginAPI* m_pluginAPI;
-	DeviceSourceAPI* m_deviceAPI;
-	ChannelMarker m_channelMarker;
-	AMDemodSettings m_settings;
-	bool m_doApplySettings;
-
-//	ThreadedBasebandSampleSink* m_threadedChannelizer;
-//	DownChannelizer* m_channelizer;
-	AMDemod* m_amDemod;
-	bool m_squelchOpen;
-	uint32_t m_tickCount;
-	MessageQueue m_inputMessageQueue;
-
-	explicit AMDemodGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidget* parent = NULL);
-	virtual ~AMDemodGUI();
-
-    void blockApplySettings(bool block);
-	void applySettings(bool force = false);
-	void displaySettings();
-	void displayUDPAddress();
-
-	void leaveEvent(QEvent*);
-	void enterEvent(QEvent*);
 };
 
 #endif // INCLUDE_AMDEMODGUI_H

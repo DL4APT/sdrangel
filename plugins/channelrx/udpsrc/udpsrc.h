@@ -18,9 +18,11 @@
 #ifndef INCLUDE_UDPSRC_H
 #define INCLUDE_UDPSRC_H
 
-#include <dsp/basebandsamplesink.h>
 #include <QMutex>
 #include <QHostAddress>
+
+#include "dsp/basebandsamplesink.h"
+#include "channel/channelsinkapi.h"
 #include "dsp/nco.h"
 #include "dsp/fftfilt.h"
 #include "dsp/interpolator.h"
@@ -39,7 +41,7 @@ class DeviceSourceAPI;
 class ThreadedBasebandSampleSink;
 class DownChannelizer;
 
-class UDPSrc : public BasebandSampleSink {
+class UDPSrc : public BasebandSampleSink, public ChannelSinkAPI {
 	Q_OBJECT
 
 public:
@@ -92,6 +94,7 @@ public:
 
 	UDPSrc(DeviceSourceAPI *deviceAPI);
 	virtual ~UDPSrc();
+	virtual void destroy() { delete this; }
 	void setSpectrum(BasebandSampleSink* spectrum) { m_spectrum = spectrum; }
 
 	void setSpectrum(MessageQueue* messageQueue, bool enabled);
@@ -104,6 +107,15 @@ public:
 	virtual void stop();
 	virtual bool handleMessage(const Message& cmd);
 
+    virtual void getIdentifier(QString& id) { id = objectName(); }
+    virtual void getTitle(QString& title) { title = m_settings.m_title; }
+    virtual qint64 getCenterFrequency() const { return m_settings.m_inputFrequencyOffset; }
+
+    virtual QByteArray serialize() const;
+    virtual bool deserialize(const QByteArray& data);
+
+    static const QString m_channelIdURI;
+    static const QString m_channelId;
 	static const int udpBlockSize = 512; // UDP block size in number of bytes
 
 public slots:
@@ -130,11 +142,29 @@ protected:
 		{ }
 	};
 
-    UDPSrcSettings m_settings;
+	struct Sample16
+	{
+	    Sample16() : m_r(0), m_i(0) {}
+	    Sample16(int16_t r, int16_t i) : m_r(r), m_i(i) {}
+	    int16_t m_r;
+	    int16_t m_i;
+	};
+
+    struct Sample24
+    {
+	    Sample24() : m_r(0), m_i(0) {}
+	    Sample24(int32_t r, int32_t i) : m_r(r), m_i(i) {}
+        int32_t m_r;
+        int32_t m_i;
+    };
 
     DeviceSourceAPI *m_deviceAPI;
     ThreadedBasebandSampleSink* m_threadedChannelizer;
     DownChannelizer* m_channelizer;
+
+    int m_inputSampleRate;
+    int m_inputFrequencyOffset;
+    UDPSrcSettings m_settings;
 
 	QUdpSocket *m_audioSocket;
 
@@ -153,8 +183,10 @@ protected:
 	fftfilt* UDPFilter;
 
 	SampleVector m_sampleBuffer;
-	UDPSink<Sample> *m_udpBuffer;
-	UDPSink<FixReal> *m_udpBufferMono;
+	UDPSink<Sample16> *m_udpBuffer16;
+	UDPSink<int16_t> *m_udpBufferMono16;
+    UDPSink<Sample24> *m_udpBuffer24;
+    UDPSink<int32_t> *m_udpBufferMono24;
 
 	AudioVector m_audioBuffer;
 	uint m_audioBufferFill;
@@ -184,6 +216,7 @@ protected:
 
 	QMutex m_settingsMutex;
 
+    void applyChannelSettings(int inputSampleRate, int inputFrequencyOffset, bool force = true);
     void applySettings(const UDPSrcSettings& settings, bool force = false);
 
     inline void calculateSquelch(double value)
@@ -241,6 +274,64 @@ protected:
             m_squelchOpen = false;
             m_squelchOpenCount = 0;
             m_squelchCloseCount = 0;
+        }
+    }
+
+    void udpWrite(FixReal real, FixReal imag)
+    {
+        if (SDR_RX_SAMP_SZ == 16)
+        {
+            if (m_settings.m_sampleSize == UDPSrcSettings::Size16bits) {
+                m_udpBuffer16->write(Sample16(real, imag));
+            } else if (m_settings.m_sampleSize == UDPSrcSettings::Size24bits) {
+                m_udpBuffer24->write(Sample24(real<<8, imag<<8));
+            }
+        }
+        else if (SDR_RX_SAMP_SZ == 24)
+        {
+            if (m_settings.m_sampleSize == UDPSrcSettings::Size16bits) {
+                m_udpBuffer16->write(Sample16(real>>8, imag>>8));
+            } else if (m_settings.m_sampleSize == UDPSrcSettings::Size24bits) {
+                m_udpBuffer24->write(Sample24(real, imag));
+            }
+        }
+    }
+
+    void udpWriteMono(FixReal sample)
+    {
+        if (SDR_RX_SAMP_SZ == 16)
+        {
+            if (m_settings.m_sampleSize == UDPSrcSettings::Size16bits) {
+                m_udpBufferMono16->write(sample);
+            } else if (m_settings.m_sampleSize == UDPSrcSettings::Size24bits) {
+                m_udpBufferMono24->write(sample<<8);
+            }
+        }
+        else if (SDR_RX_SAMP_SZ == 24)
+        {
+            if (m_settings.m_sampleSize == UDPSrcSettings::Size16bits) {
+                m_udpBufferMono16->write(sample>>8);
+            } else if (m_settings.m_sampleSize == UDPSrcSettings::Size24bits) {
+                m_udpBufferMono24->write(sample);
+            }
+        }
+    }
+
+    void udpWriteNorm(Real real, Real imag)
+    {
+        if (m_settings.m_sampleSize == UDPSrcSettings::Size16bits) {
+            m_udpBuffer16->write(Sample16(real*32768.0, imag*32768.0));
+        } else if (m_settings.m_sampleSize == UDPSrcSettings::Size24bits) {
+            m_udpBuffer24->write(Sample24(real*8388608.0, imag*8388608.0));
+        }
+    }
+
+    void udpWriteNormMono(Real sample)
+    {
+        if (m_settings.m_sampleSize == UDPSrcSettings::Size16bits) {
+            m_udpBufferMono16->write(sample*32768.0);
+        } else if (m_settings.m_sampleSize == UDPSrcSettings::Size24bits) {
+            m_udpBufferMono24->write(sample*8388608.0);
         }
     }
 

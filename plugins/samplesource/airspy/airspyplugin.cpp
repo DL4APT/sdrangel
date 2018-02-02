@@ -25,9 +25,11 @@
 #include "plugin/pluginapi.h"
 #include "util/simpleserializer.h"
 
+const int AirspyPlugin::m_maxDevices = 32;
+
 const PluginDescriptor AirspyPlugin::m_pluginDescriptor = {
 	QString("Airspy Input"),
-	QString("3.7.4"),
+	QString("3.11.0"),
 	QString("(c) Edouard Griffiths, F4EXB"),
 	QString("https://github.com/f4exb/sdrangel"),
 	true,
@@ -69,7 +71,7 @@ PluginInterface::SamplingDevices AirspyPlugin::enumSampleSources()
 		qCritical("AirspyPlugin::enumSampleSources: failed to initiate Airspy library: %s", airspy_error_name(rc));
 	}
 
-	for (i=0; i < AIRSPY_MAX_DEVICE; i++)
+	for (i=0; i < m_maxDevices; i++)
 	{
 		rc = (airspy_error) airspy_open(&devinfo);
 
@@ -99,7 +101,11 @@ PluginInterface::SamplingDevices AirspyPlugin::enumSampleSources()
 				        m_hardwareID,
 						m_deviceTypeID,
 						serial_str,
-						i));
+						i,
+						PluginInterface::SamplingDevice::PhysicalDevice,
+						true,
+						1,
+						0));
 
 				qDebug("AirspyPlugin::enumSampleSources: enumerated Airspy device #%d", i);
 			}
@@ -119,11 +125,14 @@ PluginInterface::SamplingDevices AirspyPlugin::enumSampleSources()
 	return result;
 }
 
-PluginInstanceGUI* AirspyPlugin::createSampleSourcePluginInstanceGUI(const QString& sourceId, QWidget **widget, DeviceSourceAPI *deviceAPI)
+PluginInstanceGUI* AirspyPlugin::createSampleSourcePluginInstanceGUI(
+        const QString& sourceId,
+        QWidget **widget,
+        DeviceUISet *deviceUISet)
 {
 	if (sourceId == m_deviceTypeID)
 	{
-		AirspyGui* gui = new AirspyGui(deviceAPI);
+		AirspyGui* gui = new AirspyGui(deviceUISet);
 		*widget = gui;
 		return gui;
 	}

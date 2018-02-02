@@ -25,6 +25,12 @@
 #include "util/messagequeue.h"
 #include "util/export.h"
 
+namespace SWGSDRangel
+{
+    class SWGDeviceSettings;
+    class SWGDeviceState;
+}
+
 class SDRANGEL_API DeviceSampleSink : public QObject {
 	Q_OBJECT
 public:
@@ -32,17 +38,44 @@ public:
 	virtual ~DeviceSampleSink();
 	virtual void destroy() = 0;
 
+    virtual void init() = 0;  //!< initializations to be done when all collaborating objects are created and possibly connected
 	virtual bool start() = 0;
 	virtual void stop() = 0;
+
+    virtual QByteArray serialize() const = 0;
+    virtual bool deserialize(const QByteArray& data) = 0;
 
 	virtual const QString& getDeviceDescription() const = 0;
 	virtual int getSampleRate() const = 0; //!< Sample rate exposed by the sink
 	virtual quint64 getCenterFrequency() const = 0; //!< Center frequency exposed by the sink
+    virtual void setCenterFrequency(qint64 centerFrequency) = 0;
 
 	virtual bool handleMessage(const Message& message) = 0;
 
+    virtual int webapiSettingsGet(
+            SWGSDRangel::SWGDeviceSettings& response __attribute__((unused)),
+            QString& errorMessage)
+    { errorMessage = "Not implemented"; return 501; }
+
+    virtual int webapiSettingsPutPatch(
+            bool force __attribute__((unused)), //!< true to force settings = put
+            const QStringList& deviceSettingsKeys __attribute__((unused)),
+            SWGSDRangel::SWGDeviceSettings& response __attribute__((unused)),
+            QString& errorMessage)
+    { errorMessage = "Not implemented"; return 501; }
+
+    virtual int webapiRunGet(
+            SWGSDRangel::SWGDeviceState& response __attribute__((unused)),
+            QString& errorMessage)
+    { errorMessage = "Not implemented"; return 501; }
+
+    virtual int webapiRun(bool run __attribute__((unused)),
+            SWGSDRangel::SWGDeviceState& response __attribute__((unused)),
+            QString& errorMessage)
+    { errorMessage = "Not implemented"; return 501; }
+
 	MessageQueue *getInputMessageQueue() { return &m_inputMessageQueue; }
-    void setMessageQueueToGUI(MessageQueue *queue) { m_guiMessageQueue = queue; }
+    virtual void setMessageQueueToGUI(MessageQueue *queue) = 0; // pure virtual so that child classes must have to deal with this
     MessageQueue *getMessageQueueToGUI() { return m_guiMessageQueue; }
 	SampleSourceFifo* getSampleFifo() { return &m_sampleSourceFifo; }
 

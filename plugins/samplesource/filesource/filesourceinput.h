@@ -17,42 +17,36 @@
 #ifndef INCLUDE_FILESOURCEINPUT_H
 #define INCLUDE_FILESOURCEINPUT_H
 
-#include <dsp/devicesamplesource.h>
 #include <QString>
+#include <QByteArray>
 #include <QTimer>
 #include <ctime>
 #include <iostream>
 #include <fstream>
+
+#include <dsp/devicesamplesource.h>
+#include "filesourcesettings.h"
 
 class FileSourceThread;
 class DeviceSourceAPI;
 
 class FileSourceInput : public DeviceSampleSource {
 public:
-	struct Settings {
-		QString m_fileName;
-
-		Settings();
-		void resetToDefaults();
-		QByteArray serialize() const;
-		bool deserialize(const QByteArray& data);
-	};
-
 	class MsgConfigureFileSource : public Message {
 		MESSAGE_CLASS_DECLARATION
 
 	public:
-		const Settings& getSettings() const { return m_settings; }
+		const FileSourceSettings& getSettings() const { return m_settings; }
 
-		static MsgConfigureFileSource* create(const Settings& settings)
+		static MsgConfigureFileSource* create(const FileSourceSettings& settings)
 		{
 			return new MsgConfigureFileSource(settings);
 		}
 
 	private:
-		Settings m_settings;
+		FileSourceSettings m_settings;
 
-		MsgConfigureFileSource(const Settings& settings) :
+		MsgConfigureFileSource(const FileSourceSettings& settings) :
 			Message(),
 			m_settings(settings)
 		{ }
@@ -155,35 +149,59 @@ public:
 		{ }
 	};
 
+    class MsgStartStop : public Message {
+        MESSAGE_CLASS_DECLARATION
+
+    public:
+        bool getStartStop() const { return m_startStop; }
+
+        static MsgStartStop* create(bool startStop) {
+            return new MsgStartStop(startStop);
+        }
+
+    protected:
+        bool m_startStop;
+
+        MsgStartStop(bool startStop) :
+            Message(),
+            m_startStop(startStop)
+        { }
+    };
+
 	class MsgReportFileSourceStreamData : public Message {
 		MESSAGE_CLASS_DECLARATION
 
 	public:
 		int getSampleRate() const { return m_sampleRate; }
+		quint32 getSampleSize() const { return m_sampleSize; }
 		quint64 getCenterFrequency() const { return m_centerFrequency; }
 		std::time_t getStartingTimeStamp() const { return m_startingTimeStamp; }
 		quint32 getRecordLength() const { return m_recordLength; }
 
 		static MsgReportFileSourceStreamData* create(int sampleRate,
+		        quint32 sampleSize,
 				quint64 centerFrequency,
 				std::time_t startingTimeStamp,
 				quint32 recordLength)
 		{
-			return new MsgReportFileSourceStreamData(sampleRate, centerFrequency, startingTimeStamp, recordLength);
+			return new MsgReportFileSourceStreamData(sampleRate, sampleSize, centerFrequency, startingTimeStamp, recordLength);
 		}
 
 	protected:
 		int m_sampleRate;
+		quint32 m_sampleSize;
 		quint64 m_centerFrequency;
 		std::time_t m_startingTimeStamp;
 		quint32 m_recordLength;
 
 		MsgReportFileSourceStreamData(int sampleRate,
+		        quint32 sampleSize,
 				quint64 centerFrequency,
 				std::time_t startingTimeStamp,
 				quint32 recordLength) :
 			Message(),
 			m_sampleRate(sampleRate),
+			m_sampleSize(sampleSize),
 			m_centerFrequency(centerFrequency),
 			m_startingTimeStamp(startingTimeStamp),
 			m_recordLength(recordLength)
@@ -214,25 +232,45 @@ public:
 	virtual ~FileSourceInput();
 	virtual void destroy();
 
+    virtual void init();
 	virtual bool start();
 	virtual void stop();
 
+    virtual QByteArray serialize() const;
+    virtual bool deserialize(const QByteArray& data);
+
+    virtual void setMessageQueueToGUI(MessageQueue *queue) { m_guiMessageQueue = queue; }
 	virtual const QString& getDeviceDescription() const;
 	virtual int getSampleRate() const;
 	virtual quint64 getCenterFrequency() const;
+    virtual void setCenterFrequency(qint64 centerFrequency);
 	std::time_t getStartingTimeStamp() const;
 
 	virtual bool handleMessage(const Message& message);
 
-private:
+	virtual int webapiSettingsGet(
+	            SWGSDRangel::SWGDeviceSettings& response,
+	            QString& errorMessage);
+
+    virtual int webapiRunGet(
+            SWGSDRangel::SWGDeviceState& response,
+            QString& errorMessage);
+
+    virtual int webapiRun(
+            bool run,
+            SWGSDRangel::SWGDeviceState& response,
+            QString& errorMessage);
+
+	private:
 	DeviceSourceAPI *m_deviceAPI;
 	QMutex m_mutex;
-	Settings m_settings;
+	FileSourceSettings m_settings;
 	std::ifstream m_ifstream;
 	FileSourceThread* m_fileSourceThread;
 	QString m_deviceDescription;
 	QString m_fileName;
 	int m_sampleRate;
+	quint32 m_sampleSize;
 	quint64 m_centerFrequency;
 	quint32 m_recordLength; //!< record length in seconds computed from file size
 	std::time_t m_startingTimeStamp;

@@ -13,7 +13,7 @@
 #include "tcpsrcsettings.h"
 
 class PluginAPI;
-class DeviceSourceAPI;
+class DeviceUISet;
 class TCPSrc;
 class SpectrumVis;
 
@@ -25,7 +25,7 @@ class TCPSrcGUI : public RollupWidget, public PluginInstanceGUI {
 	Q_OBJECT
 
 public:
-	static TCPSrcGUI* create(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI);
+	static TCPSrcGUI* create(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel);
 	virtual void destroy();
 
 	void setName(const QString& name);
@@ -39,25 +39,14 @@ public:
 	virtual MessageQueue *getInputMessageQueue() { return &m_inputMessageQueue; }
 	virtual bool handleMessage(const Message& message);
 
-	static const QString m_channelID;
-
-private slots:
-	void channelMarkerChanged();
-	void on_deltaFrequency_changed(qint64 value);
-	void on_sampleFormat_currentIndexChanged(int index);
-	void on_sampleRate_textEdited(const QString& arg1);
-	void on_rfBandwidth_textEdited(const QString& arg1);
-	void on_tcpPort_textEdited(const QString& arg1);
-	void on_applyBtn_clicked();
-	void onWidgetRolled(QWidget* widget, bool rollDown);
-	void onMenuDoubleClicked();
-	void on_volume_valueChanged(int value);
-	void tick();
+public slots:
+	void channelMarkerChangedByCursor();
+    void channelMarkerHighlightedByCursor();
 
 private:
 	Ui::TCPSrcGUI* ui;
 	PluginAPI* m_pluginAPI;
-	DeviceSourceAPI* m_deviceAPI;
+	DeviceUISet* m_deviceUISet;
 	TCPSrc* m_tcpSrc;
 	ChannelMarker m_channelMarker;
 	MovingAverage<double> m_channelPowerDbAvg;
@@ -69,7 +58,6 @@ private:
 	Real m_rfBandwidth;
 	int m_boost;
 	int m_tcpPort;
-	bool m_basicSettingsShown;
 	bool m_rfBandwidthChanged;
 	bool m_doApplySettings;
 
@@ -77,7 +65,7 @@ private:
 	SpectrumVis* m_spectrumVis;
 	MessageQueue m_inputMessageQueue;
 
-	explicit TCPSrcGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidget* parent = 0);
+	explicit TCPSrcGUI(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel, QWidget* parent = 0);
 	virtual ~TCPSrcGUI();
 
     void blockApplySettings(bool block);
@@ -88,6 +76,17 @@ private:
 
 	void addConnection(quint32 id, const QHostAddress& peerAddress, int peerPort);
 	void delConnection(quint32 id);
+
+private slots:
+	void on_deltaFrequency_changed(qint64 value);
+	void on_sampleFormat_currentIndexChanged(int index);
+	void on_sampleRate_textEdited(const QString& arg1);
+	void on_rfBandwidth_textEdited(const QString& arg1);
+	void on_tcpPort_textEdited(const QString& arg1);
+	void on_applyBtn_clicked();
+	void onWidgetRolled(QWidget* widget, bool rollDown);
+	void on_volume_valueChanged(int value);
+	void tick();
 };
 
 #endif // INCLUDE_TCPSRCGUI_H

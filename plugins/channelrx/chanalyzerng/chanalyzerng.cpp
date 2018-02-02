@@ -25,16 +25,21 @@
 #include "dsp/threadedbasebandsamplesink.h"
 #include "dsp/downchannelizer.h"
 
-
 MESSAGE_CLASS_DEFINITION(ChannelAnalyzerNG::MsgConfigureChannelAnalyzer, Message)
 MESSAGE_CLASS_DEFINITION(ChannelAnalyzerNG::MsgConfigureChannelizer, Message)
 MESSAGE_CLASS_DEFINITION(ChannelAnalyzerNG::MsgReportChannelSampleRateChanged, Message)
 
+const QString ChannelAnalyzerNG::m_channelIdURI = "sdrangel.channel.chanalyzerng";
+const QString ChannelAnalyzerNG::m_channelId = "ChannelAnalyzerNG";
+
 ChannelAnalyzerNG::ChannelAnalyzerNG(DeviceSourceAPI *deviceAPI) :
-    m_deviceAPI(deviceAPI),
-	m_sampleSink(0),
-	m_settingsMutex(QMutex::Recursive)
+        ChannelSinkAPI(m_channelIdURI),
+        m_deviceAPI(deviceAPI),
+        m_sampleSink(0),
+        m_settingsMutex(QMutex::Recursive)
 {
+    setObjectName(m_channelId);
+
 	m_undersampleCount = 0;
 	m_sum = 0;
 	m_usb = true;
@@ -47,8 +52,8 @@ ChannelAnalyzerNG::ChannelAnalyzerNG(DeviceSourceAPI *deviceAPI) :
 
     m_channelizer = new DownChannelizer(this);
     m_threadedChannelizer = new ThreadedBasebandSampleSink(m_channelizer, this);
-    connect(m_channelizer, SIGNAL(inputSampleRateChanged()), this, SLOT(channelizerInputSampleRateChanged()));
     m_deviceAPI->addThreadedSink(m_threadedChannelizer);
+    m_deviceAPI->addChannelAPI(this);
 
 	apply(true);
 }
@@ -57,6 +62,7 @@ ChannelAnalyzerNG::~ChannelAnalyzerNG()
 {
 	if (SSBFilter) delete SSBFilter;
 	if (DSBFilter) delete DSBFilter;
+	m_deviceAPI->removeChannelAPI(this);
     m_deviceAPI->removeThreadedSink(m_threadedChannelizer);
     delete m_threadedChannelizer;
     delete m_channelizer;
@@ -117,12 +123,6 @@ void ChannelAnalyzerNG::stop()
 {
 }
 
-void ChannelAnalyzerNG::channelizerInputSampleRateChanged()
-{
-    MsgReportChannelSampleRateChanged *msg = MsgReportChannelSampleRateChanged::create();
-    getMessageQueueToGUI()->push(msg);
-}
-
 bool ChannelAnalyzerNG::handleMessage(const Message& cmd)
 {
 	qDebug() << "ChannelAnalyzerNG::handleMessage: " << cmd.getIdentifier();
@@ -139,7 +139,14 @@ bool ChannelAnalyzerNG::handleMessage(const Message& cmd)
                 << " frequencyOffset: " << m_config.m_frequency;
 
 		apply();
-		return true;
+
+		if (getMessageQueueToGUI())
+		{
+            MsgReportChannelSampleRateChanged *msg = MsgReportChannelSampleRateChanged::create();
+            getMessageQueueToGUI()->push(msg);
+		}
+
+	    return true;
 	}
     else if (MsgConfigureChannelizer::match(cmd))
     {

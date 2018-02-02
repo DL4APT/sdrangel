@@ -16,7 +16,11 @@
 
 #include <QDebug>
 
+#include "SWGDeviceSettings.h"
+#include "SWGDeviceState.h"
+
 #include "dsp/dspcommands.h"
+#include "dsp/dspengine.h"
 #include "device/devicesourceapi.h"
 #include "device/devicesinkapi.h"
 #include "plutosdr/deviceplutosdrparams.h"
@@ -28,6 +32,7 @@
 #define PLUTOSDR_BLOCKSIZE_SAMPLES (16*1024) //complex samples per buffer (must be multiple of 64)
 
 MESSAGE_CLASS_DEFINITION(PlutoSDROutput::MsgConfigurePlutoSDR, Message)
+MESSAGE_CLASS_DEFINITION(PlutoSDROutput::MsgStartStop, Message)
 
 PlutoSDROutput::PlutoSDROutput(DeviceSinkAPI *deviceAPI) :
     m_deviceAPI(deviceAPI),
@@ -52,6 +57,11 @@ PlutoSDROutput::~PlutoSDROutput()
 void PlutoSDROutput::destroy()
 {
     delete this;
+}
+
+void PlutoSDROutput::init()
+{
+    applySettings(m_settings, true);
 }
 
 bool PlutoSDROutput::start()
@@ -99,6 +109,33 @@ void PlutoSDROutput::stop()
     m_running = false;
 }
 
+QByteArray PlutoSDROutput::serialize() const
+{
+    return m_settings.serialize();
+}
+
+bool PlutoSDROutput::deserialize(const QByteArray& data)
+{
+    bool success = true;
+
+    if (!m_settings.deserialize(data))
+    {
+        m_settings.resetToDefaults();
+        success = false;
+    }
+
+    MsgConfigurePlutoSDR* message = MsgConfigurePlutoSDR::create(m_settings, true);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue)
+    {
+        MsgConfigurePlutoSDR* messageToGUI = MsgConfigurePlutoSDR::create(m_settings, true);
+        m_guiMessageQueue->push(messageToGUI);
+    }
+
+    return success;
+}
+
 const QString& PlutoSDROutput::getDeviceDescription() const
 {
     return m_deviceDescription;
@@ -113,6 +150,20 @@ quint64 PlutoSDROutput::getCenterFrequency() const
     return m_settings.m_centerFrequency;
 }
 
+void PlutoSDROutput::setCenterFrequency(qint64 centerFrequency)
+{
+    PlutoSDROutputSettings settings = m_settings;
+    settings.m_centerFrequency = centerFrequency;
+
+    MsgConfigurePlutoSDR* message = MsgConfigurePlutoSDR::create(settings, false);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue)
+    {
+        MsgConfigurePlutoSDR* messageToGUI = MsgConfigurePlutoSDR::create(settings, false);
+        m_guiMessageQueue->push(messageToGUI);
+    }
+}
 
 bool PlutoSDROutput::handleMessage(const Message& message)
 {
@@ -141,6 +192,27 @@ bool PlutoSDROutput::handleMessage(const Message& message)
 
         return true;
     }
+    else if (MsgStartStop::match(message))
+    {
+        MsgStartStop& cmd = (MsgStartStop&) message;
+        qDebug() << "PlutoSDROutput::handleMessage: MsgStartStop: " << (cmd.getStartStop() ? "start" : "stop");
+
+        if (cmd.getStartStop())
+        {
+            if (m_deviceAPI->initGeneration())
+            {
+                m_deviceAPI->startGeneration();
+                DSPEngine::instance()->startAudioInput();
+            }
+        }
+        else
+        {
+            m_deviceAPI->stopGeneration();
+            DSPEngine::instance()->stopAudioInput();
+        }
+
+        return true;
+    }
     else
     {
         return false;
@@ -149,7 +221,6 @@ bool PlutoSDROutput::handleMessage(const Message& message)
 
 bool PlutoSDROutput::openDevice()
 {
-    //m_sampleSourceFifo.resize(m_settings.m_devSampleRate/(1<<(m_settings.m_log2Interp <= 4 ? m_settings.m_log2Interp : 4)));
     m_sampleSourceFifo.resize(32*PLUTOSDR_BLOCKSIZE_SAMPLES);
 
     // look for Rx buddy and get reference to common parameters
@@ -158,7 +229,8 @@ bool PlutoSDROutput::openDevice()
         qDebug("PlutoSDROutput::openDevice: look at Rx buddy");
 
         DeviceSourceAPI *sourceBuddy = m_deviceAPI->getSourceBuddies()[0];
-        m_deviceShared = *((DevicePlutoSDRShared *) sourceBuddy->getBuddySharedPtr()); // copy parameters
+        DevicePlutoSDRShared* buddySharedPtr = (DevicePlutoSDRShared*) sourceBuddy->getBuddySharedPtr();
+        m_deviceShared.m_deviceParams = buddySharedPtr->m_deviceParams;
 
         if (m_deviceShared.m_deviceParams == 0)
         {
@@ -320,7 +392,7 @@ bool PlutoSDROutput::applySettings(const PlutoSDROutputSettings& settings, bool 
                  << " <-FIR- " << m_deviceSampleRates.m_firRate;
 
         forwardChangeOtherDSP = true;
-        forwardChangeOwnDSP = (m_settings.m_devSampleRate != settings.m_devSampleRate);
+        forwardChangeOwnDSP = (m_settings.m_devSampleRate != settings.m_devSampleRate) || force;
     }
 
     if ((m_settings.m_log2Interp != settings.m_log2Interp) || force)
@@ -473,3 +545,30 @@ float PlutoSDROutput::getTemperature()
     DevicePlutoSDRBox *plutoBox =  m_deviceShared.m_deviceParams->getBox();
     return plutoBox->getTemp();
 }
+
+int PlutoSDROutput::webapiRunGet(
+        SWGSDRangel::SWGDeviceState& response,
+        QString& errorMessage __attribute__((unused)))
+{
+    m_deviceAPI->getDeviceEngineStateStr(*response.getState());
+    return 200;
+}
+
+int PlutoSDROutput::webapiRun(
+        bool run,
+        SWGSDRangel::SWGDeviceState& response,
+        QString& errorMessage __attribute__((unused)))
+{
+    m_deviceAPI->getDeviceEngineStateStr(*response.getState());
+    MsgStartStop *message = MsgStartStop::create(run);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue)
+    {
+        MsgStartStop *messagetoGui = MsgStartStop::create(run);
+        m_guiMessageQueue->push(messagetoGui);
+    }
+
+    return 200;
+}
+

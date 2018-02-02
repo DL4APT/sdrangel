@@ -18,6 +18,7 @@
 #include "bfmdemodgui.h"
 
 #include <device/devicesourceapi.h>
+#include "device/deviceuiset.h"
 #include <dsp/downchannelizer.h>
 #include <QDockWidget>
 #include <QMainWindow>
@@ -42,11 +43,9 @@
 #include "rdstmc.h"
 #include "ui_bfmdemodgui.h"
 
-const QString BFMDemodGUI::m_channelID = "sdrangel.channel.bfm";
-
-BFMDemodGUI* BFMDemodGUI::create(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI)
+BFMDemodGUI* BFMDemodGUI::create(PluginAPI* pluginAPI, DeviceUISet *deviceUIset, BasebandSampleSink *rxChannel)
 {
-	BFMDemodGUI* gui = new BFMDemodGUI(pluginAPI, deviceAPI);
+	BFMDemodGUI* gui = new BFMDemodGUI(pluginAPI, deviceUIset, rxChannel);
 	return gui;
 }
 
@@ -113,6 +112,7 @@ bool BFMDemodGUI::handleMessage(const Message& message)
     {
         BFMDemod::MsgReportChannelSampleRateChanged& report = (BFMDemod::MsgReportChannelSampleRateChanged&) message;
         m_rate = report.getSampleRate();
+        qDebug("BFMDemodGUI::handleMessage: MsgReportChannelSampleRateChanged: %d S/s", m_rate);
         ui->glSpectrum->setCenterFrequency(m_rate / 4);
         ui->glSpectrum->setSampleRate(m_rate / 2);
         return true;
@@ -129,8 +129,6 @@ void BFMDemodGUI::handleInputMessages()
 
     while ((message = getInputMessageQueue()->pop()) != 0)
     {
-        qDebug("BFMDemodGUI::handleInputMessages: message: %s", message->getIdentifier());
-
         if (handleMessage(*message))
         {
             delete message;
@@ -138,13 +136,16 @@ void BFMDemodGUI::handleInputMessages()
     }
 }
 
-void BFMDemodGUI::channelMarkerUpdate()
+void BFMDemodGUI::channelMarkerChangedByCursor()
 {
-    m_settings.m_udpAddress = m_channelMarker.getUDPAddress(),
-    m_settings.m_udpPort =  m_channelMarker.getUDPSendPort(),
-    m_settings.m_rgbColor = m_channelMarker.getColor().rgb();
-    displaySettings();
+    ui->deltaFrequency->setValue(m_channelMarker.getCenterFrequency());
+    m_settings.m_inputFrequencyOffset = m_channelMarker.getCenterFrequency();
     applySettings();
+}
+
+void BFMDemodGUI::channelMarkerHighlightedByCursor()
+{
+    setHighlighted(m_channelMarker.getHighlighted());
 }
 
 void BFMDemodGUI::on_deltaFrequency_changed(qint64 value)
@@ -309,17 +310,24 @@ void BFMDemodGUI::onMenuDialogCalled(const QPoint &p)
     dialog.move(p);
     dialog.exec();
 
-    if (dialog.hasChanged())
-    {
-        channelMarkerUpdate();
-    }
+    m_settings.m_inputFrequencyOffset = m_channelMarker.getCenterFrequency();
+    m_settings.m_udpAddress = m_channelMarker.getUDPAddress(),
+    m_settings.m_udpPort =  m_channelMarker.getUDPSendPort(),
+    m_settings.m_rgbColor = m_channelMarker.getColor().rgb();
+    m_settings.m_title = m_channelMarker.getTitle();
+
+    setWindowTitle(m_settings.m_title);
+    setTitleColor(m_settings.m_rgbColor);
+    displayUDPAddress();
+
+    applySettings();
 }
 
-BFMDemodGUI::BFMDemodGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidget* parent) :
+BFMDemodGUI::BFMDemodGUI(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel, QWidget* parent) :
 	RollupWidget(parent),
 	ui(new Ui::BFMDemodGUI),
 	m_pluginAPI(pluginAPI),
-	m_deviceAPI(deviceAPI),
+	m_deviceUISet(deviceUISet),
 	m_channelMarker(this),
 	m_rdsTimerCount(0),
 	m_channelPowerDbAvg(20,0),
@@ -336,8 +344,8 @@ BFMDemodGUI::BFMDemodGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidg
     connect(this, SIGNAL(customContextMenuRequested(const QPoint &)), this, SLOT(onMenuDialogCalled(const QPoint &)));
     connect(getInputMessageQueue(), SIGNAL(messageEnqueued()), this, SLOT(handleInputMessages()));
 
-	m_spectrumVis = new SpectrumVis(ui->glSpectrum);
-	m_bfmDemod = new BFMDemod(m_deviceAPI);
+	m_spectrumVis = new SpectrumVis(SDR_RX_SCALEF, ui->glSpectrum);
+	m_bfmDemod = (BFMDemod*) rxChannel; //new BFMDemod(m_deviceUISet->m_deviceSourceAPI);
 	m_bfmDemod->setMessageQueueToGUI(getInputMessageQueue());
 	m_bfmDemod->setSampleSink(m_spectrumVis);
 
@@ -349,23 +357,27 @@ BFMDemodGUI::BFMDemodGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidg
 	m_spectrumVis->configure(m_spectrumVis->getInputMessageQueue(), 64, 10, FFTWindow::BlackmanHarris);
 	connect(&MainWindow::getInstance()->getMasterTimer(), SIGNAL(timeout()), this, SLOT(tick()));
 
-	m_channelMarker.setTitle("Broadcast FM Demod");
+	m_channelMarker.blockSignals(true);
+	m_channelMarker.setColor(m_settings.m_rgbColor);
 	m_channelMarker.setBandwidth(12500);
 	m_channelMarker.setCenterFrequency(0);
+	m_channelMarker.setTitle("Broadcast FM Demod");
 	m_channelMarker.setUDPAddress("127.0.0.1");
 	m_channelMarker.setUDPSendPort(9999);
-	m_channelMarker.setVisible(true);
-	m_channelMarker.setColor(m_settings.m_rgbColor);
+	m_channelMarker.blockSignals(false);
+	m_channelMarker.setVisible(true); // activate signal on the last setting only
+
 	setTitleColor(m_channelMarker.getColor());
 
 	m_settings.setChannelMarker(&m_channelMarker);
 	m_settings.setSpectrumGUI(ui->spectrumGUI);
 
-	connect(&m_channelMarker, SIGNAL(changed()), this, SLOT(channelMarkerChanged()));
+	m_deviceUISet->registerRxChannelInstance(BFMDemod::m_channelIdURI, this);
+	m_deviceUISet->addChannelMarker(&m_channelMarker);
+	m_deviceUISet->addRollupWidget(this);
 
-	m_deviceAPI->registerChannelInstance(m_channelID, this);
-	m_deviceAPI->addChannelMarker(&m_channelMarker);
-	m_deviceAPI->addRollupWidget(this);
+	connect(&m_channelMarker, SIGNAL(changedByCursor()), this, SLOT(channelMarkerChangedByCursor()));
+    connect(&m_channelMarker, SIGNAL(highlightedByCursor()), this, SLOT(channelMarkerHighlightedByCursor()));
 
 	ui->spectrumGUI->setBuddies(m_spectrumVis->getInputMessageQueue(), m_spectrumVis, ui->glSpectrum);
 
@@ -376,20 +388,19 @@ BFMDemodGUI::BFMDemodGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidg
 	rdsUpdateFixedFields();
 	rdsUpdate(true);
 	displaySettings();
-	displayUDPAddress();
 	applySettings(true);
 }
 
 BFMDemodGUI::~BFMDemodGUI()
 {
-    m_deviceAPI->removeChannelInstance(this);
-	delete m_bfmDemod;
+    m_deviceUISet->removeRxChannelInstance(this);
+	delete m_bfmDemod; // TODO: check this: when the GUI closes it has to delete the demodulator
 	delete ui;
 }
 
 void BFMDemodGUI::displayUDPAddress()
 {
-    ui->copyAudioToUDP->setToolTip(QString("Copy audio output to UDP %1:%2").arg(m_channelMarker.getUDPAddress()).arg(m_channelMarker.getUDPSendPort()));
+    ui->copyAudioToUDP->setToolTip(QString("Copy audio output to UDP %1:%2").arg(m_settings.m_udpAddress).arg(m_settings.m_udpPort));
 }
 
 void BFMDemodGUI::blockApplySettings(bool block)
@@ -415,17 +426,21 @@ void BFMDemodGUI::displaySettings()
 {
     m_channelMarker.blockSignals(true);
     m_channelMarker.setCenterFrequency(m_settings.m_inputFrequencyOffset);
-    m_channelMarker.setColor(m_settings.m_rgbColor);
-    setTitleColor(m_settings.m_rgbColor);
+    m_channelMarker.setBandwidth(m_settings.m_rfBandwidth);
+    m_channelMarker.setTitle(m_settings.m_title);
     m_channelMarker.blockSignals(false);
+    m_channelMarker.setColor(m_settings.m_rgbColor); // activate signal on the last setting only
 
+    setTitleColor(m_settings.m_rgbColor);
     setWindowTitle(m_channelMarker.getTitle());
+    displayUDPAddress();
 
     blockApplySettings(true);
 
+    ui->deltaFrequency->setValue(m_channelMarker.getCenterFrequency());
+
     ui->rfBW->setValue(BFMDemodSettings::getRFBWIndex(m_settings.m_rfBandwidth));
     ui->rfBWText->setText(QString("%1 kHz").arg(m_settings.m_rfBandwidth / 1000.0));
-    m_channelMarker.setBandwidth(m_settings.m_rfBandwidth);
 
     ui->afBW->setValue(m_settings.m_afBandwidth/1000.0);
     ui->afBWText->setText(QString("%1 kHz").arg(m_settings.m_afBandwidth/1000.0));
@@ -447,16 +462,12 @@ void BFMDemodGUI::displaySettings()
 
 void BFMDemodGUI::leaveEvent(QEvent*)
 {
-	blockApplySettings(true);
 	m_channelMarker.setHighlighted(false);
-	blockApplySettings(false);
 }
 
 void BFMDemodGUI::enterEvent(QEvent*)
 {
-	blockApplySettings(true);
 	m_channelMarker.setHighlighted(true);
-	blockApplySettings(false);
 }
 
 void BFMDemodGUI::tick()

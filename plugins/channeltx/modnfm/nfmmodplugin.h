@@ -20,7 +20,8 @@
 #include <QObject>
 #include "plugin/plugininterface.h"
 
-class DeviceSinkAPI;
+class DeviceUISet;
+class BasebandSampleSource;
 
 class NFMModPlugin : public QObject, PluginInterface {
 	Q_OBJECT
@@ -28,20 +29,19 @@ class NFMModPlugin : public QObject, PluginInterface {
 	Q_PLUGIN_METADATA(IID "sdrangel.channeltx.nfmmod")
 
 public:
-	explicit NFMModPlugin(QObject* parent = NULL);
+	explicit NFMModPlugin(QObject* parent = 0);
 
 	const PluginDescriptor& getPluginDescriptor() const;
 	void initPlugin(PluginAPI* pluginAPI);
 
-	PluginInstanceGUI* createTxChannel(const QString& channelName, DeviceSinkAPI *deviceAPI);
+	virtual PluginInstanceGUI* createTxChannelGUI(DeviceUISet *deviceUISet, BasebandSampleSource *rxChannel);
+    virtual BasebandSampleSource* createTxChannelBS(DeviceSinkAPI *deviceAPI);
+    virtual ChannelSourceAPI* createTxChannelCS(DeviceSinkAPI *deviceAPI);
 
 private:
 	static const PluginDescriptor m_pluginDescriptor;
 
 	PluginAPI* m_pluginAPI;
-
-private slots:
-	void createInstanceModNFM(DeviceSinkAPI *deviceAPI);
 };
 
 #endif // INCLUDE_NFMMODPLUGIN_H

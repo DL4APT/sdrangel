@@ -33,15 +33,14 @@ public:
 	const PluginDescriptor& getPluginDescriptor() const;
 	void initPlugin(PluginAPI* pluginAPI);
 
-	PluginInstanceGUI* createTxChannel(const QString& channelName, DeviceSinkAPI *deviceAPI);
+	virtual PluginInstanceGUI* createTxChannelGUI(DeviceUISet *deviceUISet, BasebandSampleSource *txChannel);
+	virtual BasebandSampleSource* createTxChannelBS(DeviceSinkAPI *deviceAPI);
+	virtual ChannelSourceAPI* createTxChannelCS(DeviceSinkAPI *deviceAPI);
 
 private:
 	static const PluginDescriptor m_pluginDescriptor;
 
 	PluginAPI* m_pluginAPI;
-
-private slots:
-	void createInstanceModWFM(DeviceSinkAPI *deviceAPI);
 };
 
 #endif // INCLUDE_NFMMODPLUGIN_H

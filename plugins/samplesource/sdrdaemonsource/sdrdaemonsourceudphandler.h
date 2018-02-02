@@ -36,20 +36,25 @@ class SDRdaemonSourceUDPHandler : public QObject
 {
 	Q_OBJECT
 public:
-	SDRdaemonSourceUDPHandler(SampleSinkFifo* sampleFifo, MessageQueue *outputMessageQueueToGUI, DeviceSourceAPI *deviceAPI);
+	SDRdaemonSourceUDPHandler(SampleSinkFifo* sampleFifo, DeviceSourceAPI *deviceAPI);
 	~SDRdaemonSourceUDPHandler();
 	void setMessageQueueToGUI(MessageQueue *queue) { m_outputMessageQueueToGUI = queue; }
-	void connectTimer(const QTimer* timer);
 	void start();
 	void stop();
 	void configureUDPLink(const QString& address, quint16 port);
 	void getRemoteAddress(QString& s) const { s = m_remoteAddress.toString(); }
     int getNbOriginalBlocks() const { return SDRdaemonSourceBuffer::m_nbOriginalBlocks; }
+    bool isStreaming() const { return m_masterTimerConnected; }
+    int getSampleRate() const { return m_samplerate; }
+    int getCenterFrequency() const { return m_centerFrequency * 1000; }
 public slots:
 	void dataReadyRead();
 
 private:
 	DeviceSourceAPI *m_deviceAPI;
+	const QTimer& m_masterTimer;
+	bool m_masterTimerConnected;
+	bool m_running;
 	SDRdaemonSourceBuffer m_sdrDaemonBuffer;
 	QUdpSocket *m_dataSocket;
 	QHostAddress m_dataAddress;
@@ -72,10 +77,14 @@ private:
 	int m_throttlems;
     uint32_t m_readLengthSamples;
     uint32_t m_readLength;
+    int32_t *m_converterBuffer;
+    uint32_t m_converterBufferNbSamples;
     bool m_throttleToggle;
     uint32_t m_rateDivider;
     bool m_autoCorrBuffer;
 
+	void connectTimer();
+    void disconnectTimer();
 	void processData();
 
 private slots:

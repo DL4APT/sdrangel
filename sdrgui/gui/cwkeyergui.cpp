@@ -27,7 +27,8 @@ CWKeyerGUI::CWKeyerGUI(QWidget* parent) :
     QWidget(parent),
     ui(new Ui::CWKeyerGUI),
     m_messageQueue(0),
-    m_cwKeyer(0)
+    m_cwKeyer(0),
+    m_doApplySettings(true)
 {
     ui->setupUi(this);
 }
@@ -100,13 +101,13 @@ void CWKeyerGUI::on_cwTextClear_clicked(bool checked __attribute__((unused)))
 
 void CWKeyerGUI::on_cwTextEdit_editingFinished()
 {
-    m_cwKeyer->setText(ui->cwTextEdit->text());
+    if (m_doApplySettings) { m_cwKeyer->setText(ui->cwTextEdit->text()); }
 }
 
 void CWKeyerGUI::on_cwSpeed_valueChanged(int value)
 {
     ui->cwSpeedText->setText(QString("%1").arg(value));
-    m_cwKeyer->setWPM(value);
+    if (m_doApplySettings) { m_cwKeyer->setWPM(value); }
 }
 
 void CWKeyerGUI::on_playDots_toggled(bool checked)
@@ -115,7 +116,7 @@ void CWKeyerGUI::on_playDots_toggled(bool checked)
     ui->playDashes->setEnabled(!checked);
     ui->playText->setEnabled(!checked);
 
-    m_cwKeyer->setMode(checked ? CWKeyer::CWDots : CWKeyer::CWNone);
+    if (m_doApplySettings) { m_cwKeyer->setMode(checked ? CWKeyerSettings::CWDots : CWKeyerSettings::CWNone); }
 }
 
 void CWKeyerGUI::on_playDashes_toggled(bool checked)
@@ -124,7 +125,7 @@ void CWKeyerGUI::on_playDashes_toggled(bool checked)
     //ui->playDashes->setEnabled(!checked);
     ui->playText->setEnabled(!checked);
 
-    m_cwKeyer->setMode(checked ? CWKeyer::CWDashes : CWKeyer::CWNone);
+    if (m_doApplySettings) { m_cwKeyer->setMode(checked ? CWKeyerSettings::CWDashes : CWKeyerSettings::CWNone); }
 }
 
 void CWKeyerGUI::on_playText_toggled(bool checked)
@@ -133,7 +134,7 @@ void CWKeyerGUI::on_playText_toggled(bool checked)
     ui->playDashes->setEnabled(!checked);
     //ui->playText->setEnabled(!checked);
 
-    m_cwKeyer->setMode(checked ? CWKeyer::CWText : CWKeyer::CWNone);
+    if (m_doApplySettings) { m_cwKeyer->setMode(checked ? CWKeyerSettings::CWText : CWKeyerSettings::CWNone); }
 
     if (checked) {
         ui->playStop->setChecked(true);
@@ -144,7 +145,7 @@ void CWKeyerGUI::on_playText_toggled(bool checked)
 
 void CWKeyerGUI::on_playLoopCW_toggled(bool checked)
 {
-    m_cwKeyer->setLoop(checked);
+    if (m_doApplySettings) { m_cwKeyer->setLoop(checked); }
 }
 
 void CWKeyerGUI::on_playStop_toggled(bool checked)
@@ -170,4 +171,31 @@ void CWKeyerGUI::applySettings()
     value = ui->cwSpeed->value();
     ui->cwSpeedText->setText(QString("%1").arg(value));
     m_cwKeyer->setWPM(value);
+}
+
+void CWKeyerGUI::displaySettings(const CWKeyerSettings& settings)
+{
+    blockApplySettings(true);
+
+    ui->playLoopCW->setChecked(settings.m_loop);
+
+    ui->playDots->setEnabled((settings.m_mode == CWKeyerSettings::CWDots) || (settings.m_mode == CWKeyerSettings::CWNone));
+    ui->playDots->setChecked(settings.m_mode == CWKeyerSettings::CWDots);
+
+    ui->playDashes->setEnabled((settings.m_mode == CWKeyerSettings::CWDashes) || (settings.m_mode == CWKeyerSettings::CWNone));
+    ui->playDashes->setChecked(settings.m_mode == CWKeyerSettings::CWDashes);
+
+    ui->playText->setEnabled((settings.m_mode == CWKeyerSettings::CWText) || (settings.m_mode == CWKeyerSettings::CWNone));
+    ui->playText->setChecked(settings.m_mode == CWKeyerSettings::CWText);
+
+    ui->cwTextEdit->setText(settings.m_text);
+    ui->cwSpeed->setValue(settings.m_wpm);
+    ui->cwSpeedText->setText(QString("%1").arg(settings.m_wpm));
+
+    blockApplySettings(false);
+}
+
+void CWKeyerGUI::blockApplySettings(bool block)
+{
+    m_doApplySettings = !block;
 }

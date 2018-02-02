@@ -38,7 +38,6 @@ NFMDemodSettings::NFMDemodSettings() :
 
 void NFMDemodSettings::resetToDefaults()
 {
-    m_inputSampleRate = 96000;
     m_inputFrequencyOffset = 0;
     m_rfBandwidth = 12500;
     m_afBandwidth = 3000;
@@ -55,6 +54,7 @@ void NFMDemodSettings::resetToDefaults()
     m_udpAddress = "127.0.0.1";
     m_udpPort = 9999;
     m_rgbColor = QColor(255, 0, 0).rgb();
+    m_title = "NFM Demodulator";
 }
 
 QByteArray NFMDemodSettings::serialize() const
@@ -64,7 +64,7 @@ QByteArray NFMDemodSettings::serialize() const
     s.writeS32(2, getRFBWIndex(m_rfBandwidth));
     s.writeS32(3, m_afBandwidth/1000.0);
     s.writeS32(4, m_volume*10.0);
-    s.writeS32(5, (int) m_squelch);
+    s.writeS32(5, static_cast<int>(m_squelch));
     s.writeU32(7, m_rgbColor);
     s.writeS32(8, m_ctcssIndex);
     s.writeBool(9, m_ctcssOn);
@@ -75,6 +75,9 @@ QByteArray NFMDemodSettings::serialize() const
     if (m_channelMarker) {
         s.writeBlob(13, m_channelMarker->serialize());
     }
+
+    s.writeString(14, m_title);
+
     return s.final();
 }
 
@@ -116,6 +119,7 @@ bool NFMDemodSettings::deserialize(const QByteArray& data)
         d.readBool(10, &m_audioMute, false);
         d.readS32(11, &m_squelchGate, 5);
         d.readBool(12, &m_deltaSquelch, false);
+        d.readString(14, &m_title, "NFM Demodulator");
 
         return true;
     }

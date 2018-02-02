@@ -116,11 +116,11 @@ private:
 	DeviceSampleSink* m_sampleSink;
 };
 
-class SDRANGEL_API DSPAddSink : public Message {
+class SDRANGEL_API DSPAddBasebandSampleSink : public Message {
 	MESSAGE_CLASS_DECLARATION
 
 public:
-	DSPAddSink(BasebandSampleSink* sampleSink) : Message(), m_sampleSink(sampleSink) { }
+	DSPAddBasebandSampleSink(BasebandSampleSink* sampleSink) : Message(), m_sampleSink(sampleSink) { }
 
 	BasebandSampleSink* getSampleSink() const { return m_sampleSink; }
 
@@ -140,11 +140,11 @@ private:
 	BasebandSampleSink* m_sampleSink;
 };
 
-class SDRANGEL_API DSPAddSource : public Message {
+class SDRANGEL_API DSPAddBasebandSampleSource : public Message {
 	MESSAGE_CLASS_DECLARATION
 
 public:
-	DSPAddSource(BasebandSampleSource* sampleSource) : Message(), m_sampleSource(sampleSource) { }
+	DSPAddBasebandSampleSource(BasebandSampleSource* sampleSource) : Message(), m_sampleSource(sampleSource) { }
 
 	BasebandSampleSource* getSampleSource() const { return m_sampleSource; }
 
@@ -152,11 +152,11 @@ private:
 	BasebandSampleSource* m_sampleSource;
 };
 
-class SDRANGEL_API DSPRemoveSink : public Message {
+class SDRANGEL_API DSPRemoveBasebandSampleSink : public Message {
 	MESSAGE_CLASS_DECLARATION
 
 public:
-	DSPRemoveSink(BasebandSampleSink* sampleSink) : Message(), m_sampleSink(sampleSink) { }
+	DSPRemoveBasebandSampleSink(BasebandSampleSink* sampleSink) : Message(), m_sampleSink(sampleSink) { }
 
 	BasebandSampleSink* getSampleSink() const { return m_sampleSink; }
 
@@ -176,11 +176,11 @@ private:
 	BasebandSampleSink* m_sampleSink;
 };
 
-class SDRANGEL_API DSPRemoveSource : public Message {
+class SDRANGEL_API DSPRemoveBasebandSampleSource : public Message {
 	MESSAGE_CLASS_DECLARATION
 
 public:
-	DSPRemoveSource(BasebandSampleSource* sampleSource) : Message(), m_sampleSource(sampleSource) { }
+	DSPRemoveBasebandSampleSource(BasebandSampleSource* sampleSource) : Message(), m_sampleSource(sampleSource) { }
 
 	BasebandSampleSource* getSampleSource() const { return m_sampleSource; }
 
@@ -188,11 +188,11 @@ private:
 	BasebandSampleSource* m_sampleSource;
 };
 
-class SDRANGEL_API DSPAddThreadedSampleSink : public Message {
+class SDRANGEL_API DSPAddThreadedBasebandSampleSink : public Message {
 	MESSAGE_CLASS_DECLARATION
 
 public:
-	DSPAddThreadedSampleSink(ThreadedBasebandSampleSink* threadedSampleSink) : Message(), m_threadedSampleSink(threadedSampleSink) { }
+	DSPAddThreadedBasebandSampleSink(ThreadedBasebandSampleSink* threadedSampleSink) : Message(), m_threadedSampleSink(threadedSampleSink) { }
 
 	ThreadedBasebandSampleSink* getThreadedSampleSink() const { return m_threadedSampleSink; }
 
@@ -200,11 +200,11 @@ private:
 	ThreadedBasebandSampleSink* m_threadedSampleSink;
 };
 
-class SDRANGEL_API DSPAddThreadedSampleSource : public Message {
+class SDRANGEL_API DSPAddThreadedBasebandSampleSource : public Message {
 	MESSAGE_CLASS_DECLARATION
 
 public:
-	DSPAddThreadedSampleSource(ThreadedBasebandSampleSource* threadedSampleSource) : Message(), m_threadedSampleSource(threadedSampleSource) { }
+	DSPAddThreadedBasebandSampleSource(ThreadedBasebandSampleSource* threadedSampleSource) : Message(), m_threadedSampleSource(threadedSampleSource) { }
 
 	ThreadedBasebandSampleSource* getThreadedSampleSource() const { return m_threadedSampleSource; }
 
@@ -212,11 +212,11 @@ private:
 	ThreadedBasebandSampleSource* m_threadedSampleSource;
 };
 
-class SDRANGEL_API DSPRemoveThreadedSampleSink : public Message {
+class SDRANGEL_API DSPRemoveThreadedBasebandSampleSink : public Message {
 	MESSAGE_CLASS_DECLARATION
 
 public:
-	DSPRemoveThreadedSampleSink(ThreadedBasebandSampleSink* threadedSampleSink) : Message(), m_threadedSampleSink(threadedSampleSink) { }
+	DSPRemoveThreadedBasebandSampleSink(ThreadedBasebandSampleSink* threadedSampleSink) : Message(), m_threadedSampleSink(threadedSampleSink) { }
 
 	ThreadedBasebandSampleSink* getThreadedSampleSink() const { return m_threadedSampleSink; }
 
@@ -224,11 +224,11 @@ private:
 	ThreadedBasebandSampleSink* m_threadedSampleSink;
 };
 
-class SDRANGEL_API DSPRemoveThreadedSampleSource : public Message {
+class SDRANGEL_API DSPRemoveThreadedBasebandSampleSource : public Message {
 	MESSAGE_CLASS_DECLARATION
 
 public:
-	DSPRemoveThreadedSampleSource(ThreadedBasebandSampleSource* threadedSampleSource) : Message(), m_threadedSampleSource(threadedSampleSource) { }
+	DSPRemoveThreadedBasebandSampleSource(ThreadedBasebandSampleSource* threadedSampleSource) : Message(), m_threadedSampleSource(threadedSampleSource) { }
 
 	ThreadedBasebandSampleSource* getThreadedSampleSource() const { return m_threadedSampleSource; }
 

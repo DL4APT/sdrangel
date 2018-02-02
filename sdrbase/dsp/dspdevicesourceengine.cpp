@@ -125,28 +125,28 @@ void DSPDeviceSourceEngine::setSourceSequence(int sequence)
 void DSPDeviceSourceEngine::addSink(BasebandSampleSink* sink)
 {
 	qDebug() << "DSPDeviceSourceEngine::addSink: " << sink->objectName().toStdString().c_str();
-	DSPAddSink cmd(sink);
+	DSPAddBasebandSampleSink cmd(sink);
 	m_syncMessenger.sendWait(cmd);
 }
 
 void DSPDeviceSourceEngine::removeSink(BasebandSampleSink* sink)
 {
 	qDebug() << "DSPDeviceSourceEngine::removeSink: " << sink->objectName().toStdString().c_str();
-	DSPRemoveSink cmd(sink);
+	DSPRemoveBasebandSampleSink cmd(sink);
 	m_syncMessenger.sendWait(cmd);
 }
 
 void DSPDeviceSourceEngine::addThreadedSink(ThreadedBasebandSampleSink* sink)
 {
 	qDebug() << "DSPDeviceSourceEngine::addThreadedSink: " << sink->objectName().toStdString().c_str();
-	DSPAddThreadedSampleSink cmd(sink);
+	DSPAddThreadedBasebandSampleSink cmd(sink);
 	m_syncMessenger.sendWait(cmd);
 }
 
 void DSPDeviceSourceEngine::removeThreadedSink(ThreadedBasebandSampleSink* sink)
 {
 	qDebug() << "DSPDeviceSourceEngine::removeThreadedSink: " << sink->objectName().toStdString().c_str();
-	DSPRemoveThreadedSampleSink cmd(sink);
+	DSPRemoveThreadedBasebandSampleSink cmd(sink);
 	m_syncMessenger.sendWait(cmd);
 }
 
@@ -178,7 +178,7 @@ void DSPDeviceSourceEngine::dcOffset(SampleVector::iterator begin, SampleVector:
 	double count;
 	int io = 0;
 	int qo = 0;
-	Sample corr((qint16)m_iOffset, (qint16)m_qOffset);
+	Sample corr((FixReal)m_iOffset, (FixReal)m_qOffset);
 
 	// sum and correct in one pass
 	for(SampleVector::iterator it = begin; it < end; it++)
@@ -232,14 +232,14 @@ void DSPDeviceSourceEngine::imbalance(SampleVector::iterator begin, SampleVector
 	m_iRange = (m_iRange * 15 + (iMax - iMin)) >> 4;
 	m_qRange = (m_qRange * 15 + (qMax - qMin)) >> 4;
 
-	// calculate imbalance as Q15.16
+	// calculate imbalance on 32 bit full scale
 	if(m_qRange != 0) {
-		m_imbalance = ((uint)m_iRange << 16) / (uint)m_qRange;
+		m_imbalance = ((uint)m_iRange << (32-SDR_RX_SAMP_SZ)) / (uint)m_qRange;
 	}
 
-	// correct imbalance and convert back to signed int 16
+	// correct imbalance and convert back to sample size
 	for(SampleVector::iterator it = begin; it < end; it++) {
-		it->m_imag = (it->m_imag * m_imbalance) >> 16;
+		it->m_imag = (it->m_imag * m_imbalance) >> (32-SDR_RX_SAMP_SZ);
 	}
 }
 
@@ -365,8 +365,6 @@ DSPDeviceSourceEngine::State DSPDeviceSourceEngine::gotoIdle()
 
 DSPDeviceSourceEngine::State DSPDeviceSourceEngine::gotoInit()
 {
-	qDebug() << "DSPDeviceSourceEngine::gotoInit";
-
 	switch(m_state) {
 		case StNotStarted:
 			return StNotStarted;
@@ -398,7 +396,8 @@ DSPDeviceSourceEngine::State DSPDeviceSourceEngine::gotoInit()
 	m_centerFrequency = m_deviceSampleSource->getCenterFrequency();
 	m_sampleRate = m_deviceSampleSource->getSampleRate();
 
-	qDebug() << "DSPDeviceSourceEngine::gotoInit: " << m_deviceDescription.toStdString().c_str() << ": "
+	qDebug() << "DSPDeviceSourceEngine::gotoInit: "
+	        << " m_deviceDescription: " << m_deviceDescription.toStdString().c_str()
 			<< " sampleRate: " << m_sampleRate
 			<< " centerFrequency: " << m_centerFrequency;
 
@@ -556,14 +555,21 @@ void DSPDeviceSourceEngine::handleSynchronousMessages()
 	else if (DSPSetSource::match(*message)) {
 		handleSetSource(((DSPSetSource*) message)->getSampleSource());
 	}
-	else if (DSPAddSink::match(*message))
+	else if (DSPAddBasebandSampleSink::match(*message))
 	{
-		BasebandSampleSink* sink = ((DSPAddSink*) message)->getSampleSink();
+		BasebandSampleSink* sink = ((DSPAddBasebandSampleSink*) message)->getSampleSink();
 		m_basebandSampleSinks.push_back(sink);
+        // initialize sample rate and center frequency in the sink:
+        DSPSignalNotification msg(m_sampleRate, m_centerFrequency);
+        sink->handleMessage(msg);
+        // start the sink:
+        if(m_state == StRunning) {
+            sink->start();
+        }
 	}
-	else if (DSPRemoveSink::match(*message))
+	else if (DSPRemoveBasebandSampleSink::match(*message))
 	{
-		BasebandSampleSink* sink = ((DSPRemoveSink*) message)->getSampleSink();
+		BasebandSampleSink* sink = ((DSPRemoveBasebandSampleSink*) message)->getSampleSink();
 
 		if(m_state == StRunning) {
 			sink->stop();
@@ -571,19 +577,21 @@ void DSPDeviceSourceEngine::handleSynchronousMessages()
 
 		m_basebandSampleSinks.remove(sink);
 	}
-	else if (DSPAddThreadedSampleSink::match(*message))
+	else if (DSPAddThreadedBasebandSampleSink::match(*message))
 	{
-		ThreadedBasebandSampleSink *threadedSink = ((DSPAddThreadedSampleSink*) message)->getThreadedSampleSink();
+		ThreadedBasebandSampleSink *threadedSink = ((DSPAddThreadedBasebandSampleSink*) message)->getThreadedSampleSink();
 		m_threadedBasebandSampleSinks.push_back(threadedSink);
 		// initialize sample rate and center frequency in the sink:
 		DSPSignalNotification msg(m_sampleRate, m_centerFrequency);
 		threadedSink->handleSinkMessage(msg);
 		// start the sink:
-		threadedSink->start();
+        if(m_state == StRunning) {
+            threadedSink->start();
+        }
 	}
-	else if (DSPRemoveThreadedSampleSink::match(*message))
+	else if (DSPRemoveThreadedBasebandSampleSink::match(*message))
 	{
-		ThreadedBasebandSampleSink* threadedSink = ((DSPRemoveThreadedSampleSink*) message)->getThreadedSampleSink();
+		ThreadedBasebandSampleSink* threadedSink = ((DSPRemoveThreadedBasebandSampleSink*) message)->getThreadedSampleSink();
 		threadedSink->stop();
 		m_threadedBasebandSampleSinks.remove(threadedSink);
 	}
@@ -651,6 +659,7 @@ void DSPDeviceSourceEngine::handleInputMessages()
 			// forward changes to source GUI input queue
 
 			MessageQueue *guiMessageQueue = m_deviceSampleSource->getMessageQueueToGUI();
+			qDebug("DSPDeviceSourceEngine::handleInputMessages: DSPSignalNotification: guiMessageQueue: %p", guiMessageQueue);
 
 			if (guiMessageQueue) {
 			    DSPSignalNotification* rep = new DSPSignalNotification(*notif); // make a copy for the source GUI

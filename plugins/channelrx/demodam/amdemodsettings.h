@@ -23,7 +23,6 @@ class Serializable;
 
 struct AMDemodSettings
 {
-    int m_inputSampleRate;
     qint32 m_inputFrequencyOffset;
     Real m_rfBandwidth;
     Real m_squelch;
@@ -35,6 +34,7 @@ struct AMDemodSettings
     QString m_udpAddress;
     quint16 m_udpPort;
     quint32 m_rgbColor;
+    QString m_title;
     Serializable *m_channelMarker;
 
     AMDemodSettings();

@@ -23,6 +23,7 @@
 #include <fstream>
 
 #include "dsp/basebandsamplesource.h"
+#include "channel/channelsourceapi.h"
 #include "dsp/basebandsamplesink.h"
 #include "dsp/ncof.h"
 #include "dsp/interpolator.h"
@@ -39,7 +40,7 @@ class DeviceSinkAPI;
 class ThreadedBasebandSampleSource;
 class UpChannelizer;
 
-class SSBMod : public BasebandSampleSource {
+class SSBMod : public BasebandSampleSource, public ChannelSourceAPI {
     Q_OBJECT
 
 public:
@@ -226,8 +227,11 @@ public:
 
     //=================================================================
 
-    SSBMod(DeviceSinkAPI *deviceAPI, BasebandSampleSink* sampleSink);
+    SSBMod(DeviceSinkAPI *deviceAPI);
     ~SSBMod();
+    virtual void destroy() { delete this; }
+
+    void setSpectrumSampleSink(BasebandSampleSink* sampleSink) { m_sampleSink = sampleSink; }
 
     virtual void pull(Sample& sample);
     virtual void pullAudio(int nbSamples);
@@ -235,9 +239,21 @@ public:
     virtual void stop();
     virtual bool handleMessage(const Message& cmd);
 
+    virtual void getIdentifier(QString& id) { id = objectName(); }
+    virtual void getTitle(QString& title) { title = m_settings.m_title; }
+    virtual void setName(const QString& name) { setObjectName(name); }
+    virtual QString getName() const { return objectName(); }
+    virtual qint64 getCenterFrequency() const { return m_settings.m_inputFrequencyOffset; }
+
+    virtual QByteArray serialize() const;
+    virtual bool deserialize(const QByteArray& data);
+
     double getMagSq() const { return m_magsq; }
 
     CWKeyer *getCWKeyer() { return &m_cwKeyer; }
+
+    static const QString m_channelIdURI;
+    static const QString m_channelId;
 
 signals:
 	/**
@@ -258,6 +274,10 @@ private:
     DeviceSinkAPI* m_deviceAPI;
     ThreadedBasebandSampleSource* m_threadedChannelizer;
     UpChannelizer* m_channelizer;
+
+    int m_basebandSampleRate;
+    int m_outputSampleRate;
+    int m_inputFrequencyOffset;
     SSBModSettings m_settings;
 
     NCOF m_carrierNco;
@@ -307,6 +327,7 @@ private:
 
     static const int m_levelNbSamples;
 
+    void applyChannelSettings(int basebandSampleRate, int outputSampleRate, int inputFrequencyOffset, bool force = false);
     void applySettings(const SSBModSettings& settings, bool force = false);
     void pullAF(Complex& sample);
     void calculateLevel(Complex& sample);

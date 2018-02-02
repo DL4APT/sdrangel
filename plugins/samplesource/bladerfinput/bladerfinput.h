@@ -17,13 +17,13 @@
 #ifndef INCLUDE_BLADERFINPUT_H
 #define INCLUDE_BLADERFINPUT_H
 
+#include <QString>
+#include <QByteArray>
+
+#include <libbladeRF.h>
 #include <dsp/devicesamplesource.h>
 #include "bladerf/devicebladerf.h"
 #include "bladerf/devicebladerfparam.h"
-
-#include <libbladeRF.h>
-#include <QString>
-
 #include "bladerfinputsettings.h"
 
 class DeviceSourceAPI;
@@ -74,18 +74,52 @@ public:
         { }
     };
 
-	BladerfInput(DeviceSourceAPI *deviceAPI);
+    class MsgStartStop : public Message {
+        MESSAGE_CLASS_DECLARATION
+
+    public:
+        bool getStartStop() const { return m_startStop; }
+
+        static MsgStartStop* create(bool startStop) {
+            return new MsgStartStop(startStop);
+        }
+
+    protected:
+        bool m_startStop;
+
+        MsgStartStop(bool startStop) :
+            Message(),
+            m_startStop(startStop)
+        { }
+    };
+
+    BladerfInput(DeviceSourceAPI *deviceAPI);
 	virtual ~BladerfInput();
 	virtual void destroy();
 
+    virtual void init();
 	virtual bool start();
 	virtual void stop();
 
+    virtual QByteArray serialize() const;
+    virtual bool deserialize(const QByteArray& data);
+
+    virtual void setMessageQueueToGUI(MessageQueue *queue) { m_guiMessageQueue = queue; }
 	virtual const QString& getDeviceDescription() const;
 	virtual int getSampleRate() const;
 	virtual quint64 getCenterFrequency() const;
+    virtual void setCenterFrequency(qint64 centerFrequency);
 
 	virtual bool handleMessage(const Message& message);
+
+    virtual int webapiRunGet(
+            SWGSDRangel::SWGDeviceState& response,
+            QString& errorMessage);
+
+    virtual int webapiRun(
+            bool run,
+            SWGSDRangel::SWGDeviceState& response,
+            QString& errorMessage);
 
 private:
     bool openDevice();

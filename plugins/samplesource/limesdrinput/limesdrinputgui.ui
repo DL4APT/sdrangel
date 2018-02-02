@@ -325,6 +325,20 @@
        </property>
       </widget>
      </item>
+     <item>
+      <widget class="ExternalClockButton" name="extClock">
+       <property name="toolTip">
+        <string>External clock dialog</string>
+       </property>
+       <property name="text">
+        <string/>
+       </property>
+       <property name="icon">
+        <iconset resource="../../../sdrgui/resources/res.qrc">
+         <normaloff>:/clocksource.png</normaloff>:/clocksource.png</iconset>
+       </property>
+      </widget>
+     </item>
     </layout>
    </item>
    <item>
@@ -1146,6 +1160,11 @@ QToolTip{background-color: white; color: black;}</string>
    <class>ButtonSwitch</class>
    <extends>QToolButton</extends>
    <header>gui/buttonswitch.h</header>
+  </customwidget>
+  <customwidget>
+   <class>ExternalClockButton</class>
+   <extends>QToolButton</extends>
+   <header>gui/externalclockbutton.h</header>
   </customwidget>
  </customwidgets>
  <resources>

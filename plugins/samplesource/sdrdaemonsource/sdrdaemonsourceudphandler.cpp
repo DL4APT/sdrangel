@@ -26,8 +26,11 @@
 #include "sdrdaemonsourceinput.h"
 #include "sdrdaemonsourceudphandler.h"
 
-SDRdaemonSourceUDPHandler::SDRdaemonSourceUDPHandler(SampleSinkFifo *sampleFifo, MessageQueue *outputMessageQueueToGUI, DeviceSourceAPI *devieAPI) :
-    m_deviceAPI(devieAPI),
+SDRdaemonSourceUDPHandler::SDRdaemonSourceUDPHandler(SampleSinkFifo *sampleFifo, DeviceSourceAPI *deviceAPI) :
+    m_deviceAPI(deviceAPI),
+    m_masterTimer(deviceAPI->getMasterTimer()),
+    m_masterTimerConnected(false),
+    m_running(false),
 	m_sdrDaemonBuffer(m_rateDivider),
 	m_dataSocket(0),
 	m_dataAddress(QHostAddress::LocalHost),
@@ -41,24 +44,37 @@ SDRdaemonSourceUDPHandler::SDRdaemonSourceUDPHandler(SampleSinkFifo *sampleFifo,
 	m_centerFrequency(0),
 	m_tv_sec(0),
 	m_tv_usec(0),
-	m_outputMessageQueueToGUI(outputMessageQueueToGUI),
+	m_outputMessageQueueToGUI(0),
 	m_tickCount(0),
 	m_samplesCount(0),
 	m_timer(0),
     m_throttlems(SDRDAEMONSOURCE_THROTTLE_MS),
     m_readLengthSamples(0),
     m_readLength(0),
+    m_converterBuffer(0),
+    m_converterBufferNbSamples(0),
     m_throttleToggle(false),
     m_rateDivider(1000/SDRDAEMONSOURCE_THROTTLE_MS),
 	m_autoCorrBuffer(true)
 {
     m_udpBuf = new char[SDRdaemonSourceBuffer::m_udpPayloadSize];
+
+#ifdef USE_INTERNAL_TIMER
+#warning "Uses internal timer"
+    m_timer = new QTimer();
+    m_timer->start(50);
+    m_throttlems = m_timer->interval();
+#else
+    m_throttlems = m_masterTimer.interval();
+#endif
+    m_rateDivider = 1000 / m_throttlems;
 }
 
 SDRdaemonSourceUDPHandler::~SDRdaemonSourceUDPHandler()
 {
 	stop();
 	delete[] m_udpBuf;
+	if (m_converterBuffer) { delete[] m_converterBuffer; }
 #ifdef USE_INTERNAL_TIMER
     if (m_timer) {
         delete m_timer;
@@ -69,6 +85,10 @@ SDRdaemonSourceUDPHandler::~SDRdaemonSourceUDPHandler()
 void SDRdaemonSourceUDPHandler::start()
 {
 	qDebug("SDRdaemonSourceUDPHandler::start");
+
+	if (m_running) {
+	    return;
+	}
 
 	if (!m_dataSocket)
 	{
@@ -92,15 +112,19 @@ void SDRdaemonSourceUDPHandler::start()
 		}
 	}
 
-	// Need to notify the DSP engine to actually start
-	DSPSignalNotification *notif = new DSPSignalNotification(m_samplerate, m_centerFrequency * 1000); // Frequency in Hz for the DSP engine
-	m_deviceAPI->getDeviceEngineInputMessageQueue()->push(notif);
     m_elapsedTimer.start();
+    m_running = true;
 }
 
 void SDRdaemonSourceUDPHandler::stop()
 {
 	qDebug("SDRdaemonSourceUDPHandler::stop");
+
+	if (!m_running) {
+	    return;
+	}
+
+	disconnectTimer();
 
     if (m_dataConnected)
     {
@@ -113,6 +137,10 @@ void SDRdaemonSourceUDPHandler::stop()
 		delete m_dataSocket;
 		m_dataSocket = 0;
 	}
+
+	m_centerFrequency = 0;
+	m_samplerate = 0;
+	m_running = false;
 }
 
 void SDRdaemonSourceUDPHandler::configureUDPLink(const QString& address, quint16 port)
@@ -126,8 +154,8 @@ void SDRdaemonSourceUDPHandler::configureUDPLink(const QString& address, quint16
 		m_dataAddress = QHostAddress::LocalHost;
 	}
 
-	stop();
 	m_dataPort = port;
+	stop();
 	start();
 }
 
@@ -151,10 +179,8 @@ void SDRdaemonSourceUDPHandler::processData()
 {
     m_sdrDaemonBuffer.writeData(m_udpBuf);
     const SDRdaemonSourceBuffer::MetaDataFEC& metaData =  m_sdrDaemonBuffer.getCurrentMeta();
-
     bool change = false;
-//    m_tv_sec = metaData.m_tv_sec;
-//    m_tv_usec = metaData.m_tv_usec;
+
     m_tv_sec = m_sdrDaemonBuffer.getTVOutSec();
     m_tv_usec = m_sdrDaemonBuffer.getTVOutUsec();
 
@@ -170,34 +196,56 @@ void SDRdaemonSourceUDPHandler::processData()
         change = true;
     }
 
-    if (change)
+    if (change && (m_samplerate != 0) && (m_centerFrequency != 0))
     {
+        qDebug("SDRdaemonSourceUDPHandler::processData: m_samplerate: %u m_centerFrequency: %u kHz", m_samplerate, m_centerFrequency);
+
         DSPSignalNotification *notif = new DSPSignalNotification(m_samplerate, m_centerFrequency * 1000); // Frequency in Hz for the DSP engine
         m_deviceAPI->getDeviceEngineInputMessageQueue()->push(notif);
-        SDRdaemonSourceInput::MsgReportSDRdaemonSourceStreamData *report = SDRdaemonSourceInput::MsgReportSDRdaemonSourceStreamData::create(
-            m_samplerate,
-            m_centerFrequency * 1000, // Frequency in Hz for the GUI
-            m_tv_sec,
-            m_tv_usec);
 
-        m_outputMessageQueueToGUI->push(report);
+        if (m_outputMessageQueueToGUI)
+        {
+            SDRdaemonSourceInput::MsgReportSDRdaemonSourceStreamData *report = SDRdaemonSourceInput::MsgReportSDRdaemonSourceStreamData::create(
+                m_samplerate,
+                m_centerFrequency * 1000, // Frequency in Hz for the GUI
+                m_tv_sec,
+                m_tv_usec);
+
+            m_outputMessageQueueToGUI->push(report);
+        }
+
+        connectTimer();
     }
 }
 
-void SDRdaemonSourceUDPHandler::connectTimer(const QTimer* timer)
+void SDRdaemonSourceUDPHandler::connectTimer()
 {
-	qDebug() << "SDRdaemonSourceUDPHandler::connectTimer";
+    if (!m_masterTimerConnected)
+    {
+        qDebug() << "SDRdaemonSourceUDPHandler::connectTimer";
 #ifdef USE_INTERNAL_TIMER
 #warning "Uses internal timer"
-    m_timer = new QTimer();
-    m_timer->start(50);
-    m_throttlems = m_timer->interval();
-    connect(m_timer, SIGNAL(timeout()), this, SLOT(tick()));
+        connect(m_timer, SIGNAL(timeout()), this, SLOT(tick()));
 #else
-    m_throttlems = timer->interval();
-    connect(timer, SIGNAL(timeout()), this, SLOT(tick()));
+        connect(&m_masterTimer, SIGNAL(timeout()), this, SLOT(tick()));
 #endif
-    m_rateDivider = 1000 / m_throttlems;
+        m_masterTimerConnected = true;
+    }
+}
+
+void SDRdaemonSourceUDPHandler::disconnectTimer()
+{
+    if (m_masterTimerConnected)
+    {
+        qDebug() << "SDRdaemonSourceUDPHandler::disconnectTimer";
+#ifdef USE_INTERNAL_TIMER
+#warning "Uses internal timer"
+        disconnect(m_timer, SIGNAL(timeout()), this, SLOT(tick()));
+#else
+        disconnect(&m_masterTimer, SIGNAL(timeout()), this, SLOT(tick()));
+#endif
+        m_masterTimerConnected = false;
+    }
 }
 
 void SDRdaemonSourceUDPHandler::tick()
@@ -218,9 +266,32 @@ void SDRdaemonSourceUDPHandler::tick()
 
     m_readLength = m_readLengthSamples * SDRdaemonSourceBuffer::m_iqSampleSize;
 
-    // read samples directly feeding the SampleFifo (no callback)
-    m_sampleFifo->write(reinterpret_cast<quint8*>(m_sdrDaemonBuffer.readData(m_readLength)), m_readLength);
-    m_samplesCount += m_readLengthSamples;
+    if (SDR_RX_SAMP_SZ == 16)
+    {
+        // read samples directly feeding the SampleFifo (no callback)
+        m_sampleFifo->write(reinterpret_cast<quint8*>(m_sdrDaemonBuffer.readData(m_readLength)), m_readLength);
+        m_samplesCount += m_readLengthSamples;
+    }
+    else if (SDR_RX_SAMP_SZ == 24)
+    {
+        if (m_readLengthSamples > m_converterBufferNbSamples)
+        {
+            if (m_converterBuffer) { delete[] m_converterBuffer; }
+            m_converterBuffer = new int32_t[m_readLengthSamples*2];
+        }
+
+        uint8_t *buf = m_sdrDaemonBuffer.readData(m_readLength);
+
+        for (unsigned int is = 0; is < m_readLengthSamples; is++)
+        {
+            m_converterBuffer[2*is] = ((int16_t*)buf)[2*is];
+            m_converterBuffer[2*is]<<=8;
+            m_converterBuffer[2*is+1] = ((int16_t*)buf)[2*is+1];
+            m_converterBuffer[2*is+1]<<=8;
+        }
+
+        m_sampleFifo->write(reinterpret_cast<quint8*>(m_converterBuffer), m_readLengthSamples*sizeof(Sample));
+    }
 
 	if (m_tickCount < m_rateDivider)
 	{
@@ -228,38 +299,42 @@ void SDRdaemonSourceUDPHandler::tick()
 	}
 	else
 	{
-	    int framesDecodingStatus;
-        int minNbBlocks = m_sdrDaemonBuffer.getMinNbBlocks();
-	    int minNbOriginalBlocks = m_sdrDaemonBuffer.getMinOriginalBlocks();
-	    int nbOriginalBlocks = m_sdrDaemonBuffer.getCurrentMeta().m_nbOriginalBlocks;
-	    int nbFECblocks = m_sdrDaemonBuffer.getCurrentMeta().m_nbFECBlocks;
 		m_tickCount = 0;
 
-		//framesDecodingStatus = (minNbOriginalBlocks == nbOriginalBlocks ? 2 : (minNbOriginalBlocks < nbOriginalBlocks - nbFECblocks ? 0 : 1));
-		if (minNbBlocks < nbOriginalBlocks) {
-			framesDecodingStatus = 0;
-		} else if (minNbBlocks < nbOriginalBlocks + nbFECblocks) {
-			framesDecodingStatus = 1;
-		} else {
-			framesDecodingStatus = 2;
+		if (m_outputMessageQueueToGUI)
+		{
+	        int framesDecodingStatus;
+	        int minNbBlocks = m_sdrDaemonBuffer.getMinNbBlocks();
+	        int minNbOriginalBlocks = m_sdrDaemonBuffer.getMinOriginalBlocks();
+	        int nbOriginalBlocks = m_sdrDaemonBuffer.getCurrentMeta().m_nbOriginalBlocks;
+	        int nbFECblocks = m_sdrDaemonBuffer.getCurrentMeta().m_nbFECBlocks;
+
+	        //framesDecodingStatus = (minNbOriginalBlocks == nbOriginalBlocks ? 2 : (minNbOriginalBlocks < nbOriginalBlocks - nbFECblocks ? 0 : 1));
+	        if (minNbBlocks < nbOriginalBlocks) {
+	            framesDecodingStatus = 0;
+	        } else if (minNbBlocks < nbOriginalBlocks + nbFECblocks) {
+	            framesDecodingStatus = 1;
+	        } else {
+	            framesDecodingStatus = 2;
+	        }
+
+	        SDRdaemonSourceInput::MsgReportSDRdaemonSourceStreamTiming *report = SDRdaemonSourceInput::MsgReportSDRdaemonSourceStreamTiming::create(
+	            m_tv_sec,
+	            m_tv_usec,
+	            m_sdrDaemonBuffer.getBufferLengthInSecs(),
+	            m_sdrDaemonBuffer.getBufferGauge(),
+	            framesDecodingStatus,
+	            minNbBlocks == nbOriginalBlocks + nbFECblocks,
+	            minNbBlocks,
+	            minNbOriginalBlocks,
+	            m_sdrDaemonBuffer.getMaxNbRecovery(),
+	            m_sdrDaemonBuffer.getAvgNbBlocks(),
+	            m_sdrDaemonBuffer.getAvgOriginalBlocks(),
+	            m_sdrDaemonBuffer.getAvgNbRecovery(),
+	            nbOriginalBlocks,
+	            nbFECblocks);
+
+	            m_outputMessageQueueToGUI->push(report);
 		}
-
-		SDRdaemonSourceInput::MsgReportSDRdaemonSourceStreamTiming *report = SDRdaemonSourceInput::MsgReportSDRdaemonSourceStreamTiming::create(
-			m_tv_sec,
-			m_tv_usec,
-			m_sdrDaemonBuffer.getBufferLengthInSecs(),
-            m_sdrDaemonBuffer.getBufferGauge(),
-            framesDecodingStatus,
-            minNbBlocks == nbOriginalBlocks + nbFECblocks,
-            minNbBlocks,
-            minNbOriginalBlocks,
-            m_sdrDaemonBuffer.getMaxNbRecovery(),
-            m_sdrDaemonBuffer.getAvgNbBlocks(),
-            m_sdrDaemonBuffer.getAvgOriginalBlocks(),
-            m_sdrDaemonBuffer.getAvgNbRecovery(),
-            nbOriginalBlocks,
-            nbFECblocks);
-
-            m_outputMessageQueueToGUI->push(report);
 	}
 }

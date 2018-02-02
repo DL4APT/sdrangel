@@ -10,8 +10,8 @@
 #include "wfmdemodsettings.h"
 
 class PluginAPI;
-class DeviceSourceAPI;
-
+class DeviceUISet;
+class BasebandSampleSink;
 class WFMDemod;
 
 namespace Ui {
@@ -22,7 +22,7 @@ class WFMDemodGUI : public RollupWidget, public PluginInstanceGUI {
 	Q_OBJECT
 
 public:
-	static WFMDemodGUI* create(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI);
+	static WFMDemodGUI* create(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel);
 	virtual void destroy();
 
 	void setName(const QString& name);
@@ -36,24 +36,14 @@ public:
 	virtual MessageQueue *getInputMessageQueue() { return &m_inputMessageQueue; }
 	virtual bool handleMessage(const Message& message);
 
-	static const QString m_channelID;
-
-private slots:
-	void channelMarkerChanged();
-	void on_deltaFrequency_changed(qint64 value);
-	void on_rfBW_currentIndexChanged(int index);
-	void on_afBW_valueChanged(int value);
-	void on_volume_valueChanged(int value);
-	void on_squelch_valueChanged(int value);
-    void on_audioMute_toggled(bool checked);
-	void onWidgetRolled(QWidget* widget, bool rollDown);
-    void onMenuDialogCalled(const QPoint& p);
-	void tick();
+public slots:
+	void channelMarkerChangedByCursor();
+    void channelMarkerHighlightedByCursor();
 
 private:
 	Ui::WFMDemodGUI* ui;
 	PluginAPI* m_pluginAPI;
-	DeviceSourceAPI* m_deviceAPI;
+	DeviceUISet* m_deviceUISet;
 	ChannelMarker m_channelMarker;
 	WFMDemodSettings m_settings;
 	bool m_basicSettingsShown;
@@ -65,7 +55,7 @@ private:
 	MovingAverage<double> m_channelPowerDbAvg;
 	MessageQueue m_inputMessageQueue;
 
-	explicit WFMDemodGUI(PluginAPI* pluginAPI, DeviceSourceAPI *deviceAPI, QWidget* parent = NULL);
+	explicit WFMDemodGUI(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSink *rxChannel, QWidget* parent = 0);
 	virtual ~WFMDemodGUI();
 
     void blockApplySettings(bool block);
@@ -84,6 +74,18 @@ private:
 	        return (3*rfBW)/2;
 	    }
 	}
+
+private slots:
+	void on_deltaFrequency_changed(qint64 value);
+	void on_rfBW_currentIndexChanged(int index);
+	void on_afBW_valueChanged(int value);
+	void on_volume_valueChanged(int value);
+	void on_squelch_valueChanged(int value);
+    void on_audioMute_toggled(bool checked);
+    void on_copyAudioToUDP_toggled(bool copy);
+	void onWidgetRolled(QWidget* widget, bool rollDown);
+    void onMenuDialogCalled(const QPoint& p);
+	void tick();
 };
 
 #endif // INCLUDE_WFMDEMODGUI_H

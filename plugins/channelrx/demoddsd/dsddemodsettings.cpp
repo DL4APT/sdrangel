@@ -30,7 +30,6 @@ DSDDemodSettings::DSDDemodSettings() :
 
 void DSDDemodSettings::resetToDefaults()
 {
-    m_inputSampleRate = 96000;
     m_inputFrequencyOffset = 0;
     m_rfBandwidth = 12500.0;
     m_fmDeviation = 5000.0;
@@ -51,6 +50,8 @@ void DSDDemodSettings::resetToDefaults()
     m_udpAddress = "127.0.0.1";
     m_udpPort = 9999;
     m_rgbColor = QColor(0, 255, 255).rgb();
+    m_title = "DSD Demodulator";
+    m_highPassFilter = false;
 }
 
 QByteArray DSDDemodSettings::serialize() const
@@ -61,7 +62,6 @@ QByteArray DSDDemodSettings::serialize() const
     s.writeS32(3, m_demodGain*100.0);
     s.writeS32(4, m_fmDeviation/100.0);
     s.writeS32(5, m_squelch*10.0);
-    s.writeS32(6, m_inputSampleRate);
     s.writeU32(7, m_rgbColor);
     s.writeS32(8, m_squelchGate);
     s.writeS32(9, m_volume*10.0);
@@ -80,6 +80,9 @@ QByteArray DSDDemodSettings::serialize() const
     if (m_channelMarker) {
         s.writeBlob(17, m_channelMarker->serialize());
     }
+
+    s.writeString(18, m_title);
+    s.writeBool(19, m_highPassFilter);
 
     return s.final();
 }
@@ -115,7 +118,6 @@ bool DSDDemodSettings::deserialize(const QByteArray& data)
         m_fmDeviation = tmp * 100.0;
         d.readS32(5, &tmp, -400);
         m_squelch = tmp / 10.0;
-        d.readS32(6, &m_inputSampleRate, 96000);
         d.readU32(7, &m_rgbColor);
         d.readS32(8, &m_squelchGate, 5);
         d.readS32(9, &tmp, 20);
@@ -132,6 +134,8 @@ bool DSDDemodSettings::deserialize(const QByteArray& data)
         d.readBool(14, &m_slot1On, false);
         d.readBool(15, &m_slot2On, false);
         d.readBool(16, &m_tdmaStereo, false);
+        d.readString(18, &m_title, "DSD Demodulator");
+        d.readBool(19, &m_highPassFilter, false);
 
         return true;
     }

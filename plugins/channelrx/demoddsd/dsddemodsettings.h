@@ -23,7 +23,6 @@ class Serializable;
 
 struct DSDDemodSettings
 {
-    int m_inputSampleRate;
     qint64 m_inputFrequencyOffset;
     Real  m_rfBandwidth;
     Real  m_fmDeviation;
@@ -44,6 +43,8 @@ struct DSDDemodSettings
     QString m_udpAddress;
     quint16 m_udpPort;
     quint32 m_rgbColor;
+    QString m_title;
+    bool m_highPassFilter;
 
     Serializable *m_channelMarker;
     Serializable *m_scopeGUI;

@@ -18,6 +18,9 @@
 #include <errno.h>
 #include <QDebug>
 
+#include "SWGDeviceSettings.h"
+#include "SWGDeviceState.h"
+
 #include "util/simpleserializer.h"
 #include "dsp/dspcommands.h"
 #include "dsp/dspengine.h"
@@ -30,6 +33,7 @@
 #include "bladerfoutputthread.h"
 
 MESSAGE_CLASS_DEFINITION(BladerfOutput::MsgConfigureBladerf, Message)
+MESSAGE_CLASS_DEFINITION(BladerfOutput::MsgStartStop, Message)
 MESSAGE_CLASS_DEFINITION(BladerfOutput::MsgReportBladerf, Message)
 
 BladerfOutput::BladerfOutput(DeviceSinkAPI *deviceAPI) :
@@ -115,6 +119,11 @@ bool BladerfOutput::openDevice()
     return true;
 }
 
+void BladerfOutput::init()
+{
+    applySettings(m_settings, true);
+}
+
 bool BladerfOutput::start()
 {
 //	QMutexLocker mutexLocker(&m_mutex);
@@ -185,6 +194,33 @@ void BladerfOutput::stop()
     m_running = false;
 }
 
+QByteArray BladerfOutput::serialize() const
+{
+    return m_settings.serialize();
+}
+
+bool BladerfOutput::deserialize(const QByteArray& data)
+{
+    bool success = true;
+
+    if (!m_settings.deserialize(data))
+    {
+        m_settings.resetToDefaults();
+        success = false;
+    }
+
+    MsgConfigureBladerf* message = MsgConfigureBladerf::create(m_settings, true);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue)
+    {
+        MsgConfigureBladerf* messageToGUI = MsgConfigureBladerf::create(m_settings, true);
+        m_guiMessageQueue->push(messageToGUI);
+    }
+
+    return success;
+}
+
 const QString& BladerfOutput::getDeviceDescription() const
 {
 	return m_deviceDescription;
@@ -201,12 +237,27 @@ quint64 BladerfOutput::getCenterFrequency() const
 	return m_settings.m_centerFrequency;
 }
 
+void BladerfOutput::setCenterFrequency(qint64 centerFrequency)
+{
+    BladeRFOutputSettings settings = m_settings;
+    settings.m_centerFrequency = centerFrequency;
+
+    MsgConfigureBladerf* message = MsgConfigureBladerf::create(settings, false);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue)
+    {
+        MsgConfigureBladerf* messageToGUI = MsgConfigureBladerf::create(settings, false);
+        m_guiMessageQueue->push(messageToGUI);
+    }
+}
+
 bool BladerfOutput::handleMessage(const Message& message)
 {
 	if (MsgConfigureBladerf::match(message))
 	{
 		MsgConfigureBladerf& conf = (MsgConfigureBladerf&) message;
-		qDebug() << "BladerfInput::handleMessage: MsgConfigureBladerf";
+		qDebug() << "BladerfOutput::handleMessage: MsgConfigureBladerf";
 
 		if (!applySettings(conf.getSettings(), conf.getForce()))
 		{
@@ -215,6 +266,27 @@ bool BladerfOutput::handleMessage(const Message& message)
 
 		return true;
 	}
+    else if (MsgStartStop::match(message))
+    {
+        MsgStartStop& cmd = (MsgStartStop&) message;
+        qDebug() << "BladerfOutput::handleMessage: MsgStartStop: " << (cmd.getStartStop() ? "start" : "stop");
+
+        if (cmd.getStartStop())
+        {
+            if (m_deviceAPI->initGeneration())
+            {
+                m_deviceAPI->startGeneration();
+                DSPEngine::instance()->startAudioInput();
+            }
+        }
+        else
+        {
+            m_deviceAPI->stopGeneration();
+            DSPEngine::instance()->stopAudioInput();
+        }
+
+        return true;
+    }
 	else
 	{
 		return false;
@@ -469,3 +541,30 @@ bool BladerfOutput::applySettings(const BladeRFOutputSettings& settings, bool fo
 
 	return true;
 }
+
+int BladerfOutput::webapiRunGet(
+        SWGSDRangel::SWGDeviceState& response,
+        QString& errorMessage __attribute__((unused)))
+{
+    m_deviceAPI->getDeviceEngineStateStr(*response.getState());
+    return 200;
+}
+
+int BladerfOutput::webapiRun(
+        bool run,
+        SWGSDRangel::SWGDeviceState& response,
+        QString& errorMessage __attribute__((unused)))
+{
+    m_deviceAPI->getDeviceEngineStateStr(*response.getState());
+    MsgStartStop *message = MsgStartStop::create(run);
+    m_inputMessageQueue.push(message);
+
+    if (m_guiMessageQueue)
+    {
+        MsgStartStop *messagetoGui = MsgStartStop::create(run);
+        m_guiMessageQueue->push(messagetoGui);
+    }
+
+    return 200;
+}
+

@@ -31,12 +31,16 @@
 MESSAGE_CLASS_DEFINITION(LoRaDemod::MsgConfigureLoRaDemod, Message)
 MESSAGE_CLASS_DEFINITION(LoRaDemod::MsgConfigureChannelizer, Message)
 
+const QString LoRaDemod::m_channelIdURI = "de.maintech.sdrangelove.channel.lora";
+const QString LoRaDemod::m_channelId = "LoRaDemod";
+
 LoRaDemod::LoRaDemod(DeviceSourceAPI* deviceAPI) :
-    m_deviceAPI(deviceAPI),
-	m_sampleSink(0),
-	m_settingsMutex(QMutex::Recursive)
+        ChannelSinkAPI(m_channelIdURI),
+        m_deviceAPI(deviceAPI),
+        m_sampleSink(0),
+        m_settingsMutex(QMutex::Recursive)
 {
-	setObjectName("LoRaDemod");
+	setObjectName(m_channelId);
 
 	m_Bandwidth = LoRaDemodSettings::bandwidths[0];
 	m_sampleRate = 96000;
@@ -54,16 +58,17 @@ LoRaDemod::LoRaDemod(DeviceSourceAPI* deviceAPI) :
 	m_time = 0;
 	m_tune = 0;
 
-    m_channelizer = new DownChannelizer(this);
-    m_threadedChannelizer = new ThreadedBasebandSampleSink(m_channelizer);
-    m_deviceAPI->addThreadedSink(m_threadedChannelizer);
-
 	loraFilter = new sfft(LORA_SFFT_LEN);
 	negaFilter = new sfft(LORA_SFFT_LEN);
 
 	mov = new float[4*LORA_SFFT_LEN];
 	history = new short[1024];
 	finetune = new short[16];
+
+    m_channelizer = new DownChannelizer(this);
+    m_threadedChannelizer = new ThreadedBasebandSampleSink(m_channelizer);
+    m_deviceAPI->addThreadedSink(m_threadedChannelizer);
+    m_deviceAPI->addChannelAPI(this);
 }
 
 LoRaDemod::~LoRaDemod()
@@ -79,6 +84,7 @@ LoRaDemod::~LoRaDemod()
 	if (finetune)
 		delete [] finetune;
 
+	m_deviceAPI->removeChannelAPI(this);
     m_deviceAPI->removeThreadedSink(m_threadedChannelizer);
     delete m_threadedChannelizer;
     delete m_channelizer;
@@ -255,7 +261,7 @@ void LoRaDemod::feed(const SampleVector::const_iterator& begin, const SampleVect
 
 	for(SampleVector::const_iterator it = begin; it < end; ++it)
 	{
-		Complex c(it->real() / 32768.0f, it->imag() / 32768.0f);
+		Complex c(it->real() / SDR_RX_SCALEF, it->imag() / SDR_RX_SCALEF);
 		c *= m_nco.nextIQ();
 
 		if(m_interpolator.decimate(&m_sampleDistanceRemain, c, &ci))
@@ -353,3 +359,26 @@ bool LoRaDemod::handleMessage(const Message& cmd)
 		}
 	}
 }
+
+QByteArray LoRaDemod::serialize() const
+{
+    return m_settings.serialize();
+}
+
+bool LoRaDemod::deserialize(const QByteArray& data)
+{
+    if (m_settings.deserialize(data))
+    {
+        MsgConfigureLoRaDemod *msg = MsgConfigureLoRaDemod::create(m_settings, true);
+        m_inputMessageQueue.push(msg);
+        return true;
+    }
+    else
+    {
+        m_settings.resetToDefaults();
+        MsgConfigureLoRaDemod *msg = MsgConfigureLoRaDemod::create(m_settings, true);
+        m_inputMessageQueue.push(msg);
+        return false;
+    }
+}
+

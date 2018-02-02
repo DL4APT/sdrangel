@@ -28,8 +28,8 @@
 #include "udpsinksettings.h"
 
 class PluginAPI;
-class DeviceSinkAPI;
-class UDPSink;
+class DeviceUISet;
+class BasebandSampleSource;
 class SpectrumVis;
 
 namespace Ui {
@@ -40,7 +40,7 @@ class UDPSinkGUI : public RollupWidget, public PluginInstanceGUI {
     Q_OBJECT
 
 public:
-    static UDPSinkGUI* create(PluginAPI* pluginAPI, DeviceSinkAPI *deviceAPI);
+    static UDPSinkGUI* create(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSource *channelTx);
     virtual void destroy();
 
     void setName(const QString& name);
@@ -53,11 +53,40 @@ public:
     virtual MessageQueue *getInputMessageQueue() { return &m_inputMessageQueue; }
     virtual bool handleMessage(const Message& message);
 
-    static const QString m_channelID;
+public slots:
+    void channelMarkerChangedByCursor();
+
+private:
+    Ui::UDPSinkGUI* ui;
+    PluginAPI* m_pluginAPI;
+    DeviceUISet* m_deviceUISet;
+    SpectrumVis* m_spectrumVis;
+    UDPSink* m_udpSink;
+    MovingAverage<double> m_channelPowerAvg;
+    MovingAverage<double> m_inPowerAvg;
+    uint32_t m_tickCount;
+    ChannelMarker m_channelMarker;
+
+    // settings
+    UDPSinkSettings m_settings;
+    bool m_rfBandwidthChanged;
+    bool m_doApplySettings;
+    MessageQueue m_inputMessageQueue;
+
+    explicit UDPSinkGUI(PluginAPI* pluginAPI, DeviceUISet *deviceUISet, BasebandSampleSource *channelTx, QWidget* parent = NULL);
+    virtual ~UDPSinkGUI();
+
+    void blockApplySettings(bool block);
+    void applySettings(bool force = false);
+    void displaySettings();
+    void setSampleFormat(int index);
+    void setSampleFormatIndex(const UDPSinkSettings::SampleFormat& sampleFormat);
+
+    void leaveEvent(QEvent*);
+    void enterEvent(QEvent*);
 
 private slots:
     void handleSourceMessages();
-    void channelMarkerChanged();
     void on_deltaFrequency_changed(qint64 value);
     void on_sampleFormat_currentIndexChanged(int index);
     void on_sampleRate_textEdited(const QString& arg1);
@@ -76,36 +105,6 @@ private slots:
     void on_autoRWBalance_toggled(bool checked);
     void on_stereoInput_toggled(bool checked);
     void tick();
-
-private:
-    Ui::UDPSinkGUI* ui;
-    PluginAPI* m_pluginAPI;
-    DeviceSinkAPI* m_deviceAPI;
-    SpectrumVis* m_spectrumVis;
-    UDPSink* m_udpSink;
-    MovingAverage<double> m_channelPowerAvg;
-    MovingAverage<double> m_inPowerAvg;
-    uint32_t m_tickCount;
-    ChannelMarker m_channelMarker;
-
-    // settings
-    UDPSinkSettings m_settings;
-    bool m_rfBandwidthChanged;
-    bool m_doApplySettings;
-    MessageQueue m_inputMessageQueue;
-
-    explicit UDPSinkGUI(PluginAPI* pluginAPI, DeviceSinkAPI *deviceAPI, QWidget* parent = NULL);
-    virtual ~UDPSinkGUI();
-
-    void blockApplySettings(bool block);
-    void applySettings(bool force = false);
-    void displaySettings();
-    void displayUDPSettings();
-    void setSampleFormat(int index);
-    void setSampleFormatIndex(const UDPSinkSettings::SampleFormat& sampleFormat);
-
-    void leaveEvent(QEvent*);
-    void enterEvent(QEvent*);
 };
 
 #endif /* PLUGINS_CHANNELTX_UDPSINK_UDPSINKGUI_H_ */

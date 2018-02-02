@@ -30,8 +30,6 @@ AMModSettings::AMModSettings() :
 
 void AMModSettings::resetToDefaults()
 {
-    m_basebandSampleRate = 48000;
-    m_outputSampleRate = 48000;
     m_inputFrequencyOffset = 0;
     m_rfBandwidth = 12500.0;
     m_modFactor = 0.2f;
@@ -41,6 +39,7 @@ void AMModSettings::resetToDefaults()
     m_channelMute = false;
     m_playLoop = false;
     m_rgbColor = QColor(255, 255, 0).rgb();
+    m_title = "AM Modulator";
 }
 
 QByteArray AMModSettings::serialize() const
@@ -61,6 +60,8 @@ QByteArray AMModSettings::serialize() const
     if (m_channelMarker) {
         s.writeBlob(8, m_channelMarker->serialize());
     }
+
+    s.writeString(9, m_title);
 
     return s.final();
 }
@@ -97,6 +98,8 @@ bool AMModSettings::deserialize(const QByteArray& data)
             d.readBlob(8, &bytetmp);
             m_channelMarker->deserialize(bytetmp);
         }
+
+        d.readString(9, &m_title, "AM Modulator");
 
         return true;
     }

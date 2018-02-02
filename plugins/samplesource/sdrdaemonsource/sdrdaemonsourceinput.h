@@ -17,13 +17,14 @@
 #ifndef INCLUDE_SDRDAEMONSOURCEINPUT_H
 #define INCLUDE_SDRDAEMONSOURCEINPUT_H
 
-#include <dsp/devicesamplesource.h>
 #include <QString>
+#include <QByteArray>
 #include <QTimer>
 #include <ctime>
 #include <iostream>
 #include <stdint.h>
 
+#include <dsp/devicesamplesource.h>
 #include "sdrdaemonsourcesettings.h"
 
 class DeviceSourceAPI;
@@ -54,71 +55,6 @@ public:
             m_force(force)
         { }
     };
-
-	class MsgConfigureSDRdaemonUDPLink : public Message {
-		MESSAGE_CLASS_DECLARATION
-
-	public:
-		const QString& getAddress() const { return m_address; }
-		quint16 getPort() const { return m_port; }
-
-		static MsgConfigureSDRdaemonUDPLink* create(const QString& address, quint16 port)
-		{
-			return new MsgConfigureSDRdaemonUDPLink(address, port);
-		}
-
-	private:
-		QString m_address;
-		quint16 m_port;
-
-		MsgConfigureSDRdaemonUDPLink(const QString& address, quint16 port) :
-			Message(),
-			m_address(address),
-			m_port(port)
-		{ }
-	};
-
-	class MsgConfigureSDRdaemonAutoCorr : public Message {
-		MESSAGE_CLASS_DECLARATION
-	public:
-		bool getDCBlock() const { return m_dcBlock; }
-		bool getIQImbalance() const { return m_iqCorrection; }
-
-		static MsgConfigureSDRdaemonAutoCorr* create(bool dcBlock, bool iqImbalance)
-		{
-			return new MsgConfigureSDRdaemonAutoCorr(dcBlock, iqImbalance);
-		}
-
-	private:
-		bool m_dcBlock;
-		bool m_iqCorrection;
-
-		MsgConfigureSDRdaemonAutoCorr(bool dcBlock, bool iqImbalance) :
-			Message(),
-			m_dcBlock(dcBlock),
-			m_iqCorrection(iqImbalance)
-		{ }
-	};
-
-	class MsgConfigureSDRdaemonWork : public Message {
-		MESSAGE_CLASS_DECLARATION
-
-	public:
-		bool isWorking() const { return m_working; }
-
-		static MsgConfigureSDRdaemonWork* create(bool working)
-		{
-			return new MsgConfigureSDRdaemonWork(working);
-		}
-
-	private:
-		bool m_working;
-
-		MsgConfigureSDRdaemonWork(bool working) :
-			Message(),
-			m_working(working)
-		{ }
-	};
 
 	class MsgConfigureSDRdaemonStreamTiming : public Message {
 		MESSAGE_CLASS_DECLARATION
@@ -303,37 +239,69 @@ public:
         { }
     };
 
+    class MsgStartStop : public Message {
+        MESSAGE_CLASS_DECLARATION
+
+    public:
+        bool getStartStop() const { return m_startStop; }
+
+        static MsgStartStop* create(bool startStop) {
+            return new MsgStartStop(startStop);
+        }
+
+    protected:
+        bool m_startStop;
+
+        MsgStartStop(bool startStop) :
+            Message(),
+            m_startStop(startStop)
+        { }
+    };
+
 	SDRdaemonSourceInput(DeviceSourceAPI *deviceAPI);
 	virtual ~SDRdaemonSourceInput();
 	virtual void destroy();
 
+    virtual void init();
 	virtual bool start();
 	virtual void stop();
 
+    virtual QByteArray serialize() const;
+    virtual bool deserialize(const QByteArray& data);
+
+    virtual void setMessageQueueToGUI(MessageQueue *queue);
 	virtual const QString& getDeviceDescription() const;
 	virtual int getSampleRate() const;
 	virtual quint64 getCenterFrequency() const;
+    virtual void setCenterFrequency(qint64 centerFrequency);
 	std::time_t getStartingTimeStamp() const;
-	void getRemoteAddress(QString &s);
+	bool isStreaming() const;
 
 	virtual bool handleMessage(const Message& message);
 
-	virtual void setMessageQueueToGUI(MessageQueue *queue);
+    virtual int webapiRunGet(
+            SWGSDRangel::SWGDeviceState& response,
+            QString& errorMessage);
+
+    virtual int webapiRun(
+            bool run,
+            SWGSDRangel::SWGDeviceState& response,
+            QString& errorMessage);
 
 private:
 	DeviceSourceAPI *m_deviceAPI;
 	QMutex m_mutex;
-	QString m_address;
-	quint16 m_port;
+	SDRdaemonSourceSettings m_settings;
 	SDRdaemonSourceUDPHandler* m_SDRdaemonUDPHandler;
+    QString m_remoteAddress;
+	int m_sender;
 	QString m_deviceDescription;
-	int m_sampleRate;
-	quint64 m_centerFrequency;
 	std::time_t m_startingTimeStamp;
-	const QTimer& m_masterTimer;
     bool m_autoFollowRate;
     bool m_autoCorrBuffer;
     FileRecord *m_fileSink; //!< File sink to record device I/Q output
+
+    void applySettings(const SDRdaemonSourceSettings& settings, bool force = false);
 };
 
 #endif // INCLUDE_SDRDAEMONSOURCEINPUT_H

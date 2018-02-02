@@ -4,12 +4,14 @@
 #
 #--------------------------------------------------------
 
-QT += core gui multimedia opengl
+QT += core multimedia
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
 TEMPLATE = lib
 TARGET = sdrbase
 INCLUDEPATH += $$PWD
+INCLUDEPATH += ../httpserver
+INCLUDEPATH += ../swagger/sdrangel/code/qt5/client
 
 DEFINES += USE_KISSFFT=1
 win32 {
@@ -49,6 +51,12 @@ SOURCES += audio/audiodeviceinfo.cpp\
         audio/audiofifo.cpp\
         audio/audiooutput.cpp\
         audio/audioinput.cpp\
+        channel/channelsinkapi.cpp\
+        channel/channelsourceapi.cpp\
+        commands/command.cpp\
+        device/devicesourceapi.cpp\
+        device/devicesinkapi.cpp\
+        device/deviceenumerator.cpp\
         dsp/afsquelch.cpp\
         dsp/agc.cpp\
         dsp/downchannelizer.cpp\
@@ -56,6 +64,7 @@ SOURCES += audio/audiodeviceinfo.cpp\
         dsp/channelmarker.cpp\
         dsp/ctcssdetector.cpp\
         dsp/cwkeyer.cpp\
+        dsp/cwkeyersettings.cpp\
         dsp/dspcommands.cpp\
         dsp/dspengine.cpp\
         dsp/dspdevicesourceengine.cpp\
@@ -96,19 +105,32 @@ SOURCES += audio/audiodeviceinfo.cpp\
         util/prettyprint.cpp\
         util/syncmessenger.cpp\
         util/samplesourceserializer.cpp\
-        util/simpleserializer.cpp
+        util/simpleserializer.cpp\
+        util/uid.cpp\
+        plugin/plugininterface.cpp\
+        plugin/pluginapi.cpp\        
+        plugin/pluginmanager.cpp\
+        webapi/webapiadapterinterface.cpp\
+        webapi/webapirequestmapper.cpp\
+        webapi/webapiserver.cpp\
+        mainparser.cpp
 
 HEADERS  += audio/audiodeviceinfo.h\
         audio/audiofifo.h\
         audio/audiooutput.h\
         audio/audioinput.h\
+        channel/channelsinkapi.h\
+        channel/channelsourceapi.h\ 
+        commands/command.h\       
         device/devicesourceapi.h\
         device/devicesinkapi.h\
+        device/deviceenumerator.h\
         dsp/afsquelch.h\
         dsp/downchannelizer.h\
         dsp/upchannelizer.h\
         dsp/channelmarker.h\
         dsp/cwkeyer.h\
+        dsp/cwkeyersettings.h\
         dsp/complex.h\
         dsp/decimators.h\
         dsp/interpolators.h\
@@ -126,6 +148,7 @@ HEADERS  += audio/audiodeviceinfo.h\
         dsp/filerecord.h\
         dsp/gfft.h\
         dsp/hbfiltertraits.h\
+        dsp/iirfilter.h\
         dsp/interpolator.h\
         dsp/inthalfbandfilter.h\
         dsp/inthalfbandfilterdb.h\
@@ -157,6 +180,9 @@ HEADERS  += audio/audiodeviceinfo.h\
         dsp/devicesamplesource.h\
         dsp/devicesamplesink.h\
         plugin/plugininstancegui.h\
+        plugin/plugininterface.h\   
+        plugin/pluginapi.h\   
+        plugin/pluginmanager.h\   
         settings/preferences.h\
         settings/preset.h\
         settings/mainsettings.h\
@@ -168,9 +194,18 @@ HEADERS  += audio/audiodeviceinfo.h\
         util/prettyprint.h\
         util/syncmessenger.h\
         util/samplesourceserializer.h\
-        util/simpleserializer.h
+        util/simpleserializer.h\
+        util/uid.h\
+        webapi/webapiadapterinterface.h\
+        webapi/webapirequestmapper.h\
+        webapi/webapiserver.h\
+        mainparser.h
 
 !macx:LIBS += -L../serialdv/$${build_subdir} -lserialdv
+LIBS += -L../httpserver/$${build_subdir} -lhttpserver
+LIBS += -L../swagger/$${build_subdir} -lswagger
+
+RESOURCES = resources/res.qrc
 
 CONFIG(ANDROID):CONFIG += mobility
 CONFIG(ANDROID):MOBILITY =

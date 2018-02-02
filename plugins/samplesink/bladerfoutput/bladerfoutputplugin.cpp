@@ -25,8 +25,8 @@
 #include "bladerfoutputgui.h"
 
 const PluginDescriptor BladerfOutputPlugin::m_pluginDescriptor = {
-	QString("BladerRF Output"),
-	QString("3.7.4"),
+	QString("BladeRF Output"),
+	QString("3.9.0"),
 	QString("(c) Edouard Griffiths, F4EXB"),
 	QString("https://github.com/f4exb/sdrangel"),
 	true,
@@ -66,7 +66,11 @@ PluginInterface::SamplingDevices BladerfOutputPlugin::enumSampleSinks()
 		        m_hardwareID,
 				m_deviceTypeID,
 				QString(devinfo[i].serial),
-				i));
+				i,
+				PluginInterface::SamplingDevice::PhysicalDevice,
+				false,
+				1,
+				0));
 	}
 
 	if (devinfo)
@@ -77,11 +81,14 @@ PluginInterface::SamplingDevices BladerfOutputPlugin::enumSampleSinks()
 	return result;
 }
 
-PluginInstanceGUI* BladerfOutputPlugin::createSampleSinkPluginInstanceGUI(const QString& sinkId,QWidget **widget, DeviceSinkAPI *deviceAPI)
+PluginInstanceGUI* BladerfOutputPlugin::createSampleSinkPluginInstanceGUI(
+        const QString& sinkId,
+        QWidget **widget,
+        DeviceUISet *deviceUISet)
 {
 	if(sinkId == m_deviceTypeID)
 	{
-		BladerfOutputGui* gui = new BladerfOutputGui(deviceAPI);
+		BladerfOutputGui* gui = new BladerfOutputGui(deviceUISet);
 		*widget = gui;
 		return gui;
 	}
